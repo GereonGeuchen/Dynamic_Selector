@@ -43,98 +43,6 @@ def runParallelFunction(runFunction, arguments):
     p.close()
     return results
 
-# Class to time the algorithm execution
-class TimedProblemWrapper:
-    def __init__(self, problem, start_eval=0, stop_eval=1000):
-        self.problem = problem
-        self.start_eval = start_eval
-        self.stop_eval = stop_eval
-        self._start_time = None
-        self._start_cpu = None
-        self._timing_done = False
-
-    def __call__(self, x):
-        evals = self.problem.state.evaluations
-
-        if evals <= self.start_eval:
-            self._start_time = time.time()
-            self._start_cpu = time.process_time()
-
-        y = self.problem(x)
-
-        evals = self.problem.state.evaluations
-        if evals >= self.stop_eval and not self._timing_done:
-            self._timing_done = True
-            wall = time.time() - self._start_time
-            cpu = time.process_time() - self._start_cpu
-            print(f"[Timing] Evaluations {self.start_eval}–{self.stop_eval}, {self.state.evaluations}:")
-            print(f"  Wall-clock time: {wall:.6f} seconds")
-            print(f"  CPU time:        {cpu:.6f} seconds")
-
-        return y
-
-    def attach_logger(self, logger):
-        self.problem.attach_logger(logger)
-
-    def detach_logger(self):
-        self.problem.detach_logger()
-
-    def reset(self):
-        self.problem.reset()
-        self._start_time = None
-        self._start_cpu = None
-        self._timing_done = False
-
-    def __getattr__(self, attr):
-        return getattr(self.problem, attr)
-
-
-# class LoggingProblemWrapper:
-#     def __init__(self, problem):
-#         self.problem = problem
-#         self.logged_evals = []
-
-#     def __call__(self, x):
-#         y = self.problem(x)
-#         self.logged_evals.append((np.copy(x), y))
-#         return y
-
-#     def reset_log(self):
-#         self.logged_evals = []
-
-#     def get_log(self):
-#         return self.logged_evals
-
-#     def get_array(self):
-#         if not self.logged_evals:
-#             return np.array([]), np.array([])
-#         xs = np.array([x for x, y in self.logged_evals])
-#         ys = np.array([y for x, y in self.logged_evals])
-#         return xs, ys
-
-#     def attach_logger(self, logger):
-#         """Pass IOH logger through to the underlying problem"""
-#         if hasattr(self.problem, "attach_logger"):
-#             self.problem.attach_logger(logger)
-#         else:
-#             raise AttributeError("Underlying problem does not support logger attachment")
-
-#     def detach_logger(self):
-#         """Detach IOH logger from the underlying problem"""
-#         if hasattr(self.problem, "detach_logger"):
-#             self.problem.detach_logger()
-    
-#     def reset_log(self):
-#         """Reset the logged evaluations"""
-#         self.logged_evals = []
-
-#     def __getattr__(self, attr):
-#         return getattr(self.problem, attr)
-
-
-
-
-
 @dataclass
 class TrackedParameters:
     # Static meta info
@@ -218,7 +126,7 @@ class From_CMA_To_CMA():
         self.total_budget = total_budget_factor*self.dim
         
     def __call__(self, problem, A2, hparams = {}):
-        if A2 == "Same":
+        if A2 == "Non-elitist":
             budget = self.total_budget
         else:
             budget = self.budget_factor
@@ -232,14 +140,14 @@ class From_CMA_To_CMA():
                     bound_correction='saturate',
                     sigma0 = 2.0,
                     x0 = np.zeros((self.dim,1)),
-                    elitist = True
+                    elitist = False
                 ).run()
         
-        if A2 == "Same":
+        if A2 == "Non-elitist":
             return
         
-        if A2 == "Non-elitist":
-            cma.parameters.elitist = False
+        if A2 == "Elitist":
+            cma.parameters.elitist = True
             cma.parameters.budget = self.total_budget
         cma.run()
         
@@ -262,7 +170,7 @@ class Switched_From_CMA():
                     bound_correction='saturate',
                     sigma0 = 2.0,
                     x0 = np.zeros((self.dim,1)),
-                    elitist = True
+                    elitist = False
                 ).run()
         
         params = {}
@@ -287,12 +195,12 @@ class Switched_From_CMA():
         algorithm.run()
 
         
-def collect_A1_data(budget_factor, dim = 5, time_run=False):
+def collect_A1_data(budget_factor, dim = 5):
     trigger = ioh.logger.trigger.Always()
 
     logger = ioh.logger.Analyzer(
         triggers=[trigger],
-        folder_name=f'../data/run_data_10D/A1_data_10D/A1_B{budget_factor}_{dim}D',
+        folder_name=f'../data/run_data_5D/A1_data_5D/A1_B{budget_factor}_{dim}D',
         algorithm_name='ModCMA_A1',
         store_positions=True
     )
@@ -303,10 +211,6 @@ def collect_A1_data(budget_factor, dim = 5, time_run=False):
         for iid in range(1, 6):
             problem = ioh.get_problem(fid, iid, dim, ProblemClass.BBOB)
 
-            # If we want to time the run, wrap the problem in a TimedProblemWrapper
-            if time_run:
-                problem = TimedProblemWrapper(problem, start_eval=0, stop_eval=1000)
-                print(f"Timing enabled for function {fid}, instance {iid}, budget {budget_factor}")
             
             # Attach the logger to the problem
             problem.attach_logger(logger)
@@ -325,13 +229,13 @@ def collect_A1_data(budget_factor, dim = 5, time_run=False):
                     bound_correction='saturate',
                     sigma0 = 2.0,
                     x0 = np.zeros((dim,1)),
-                    elitist = True
+                    elitist = False
                 ).run()
                 problem.reset()
             problem.detach_logger()
             
             
-def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False, time_run=False, find_best=False):
+def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False):
     if budget_factor == 0:
         run_A2_from_scratch = True
     trigger = ioh.logger.trigger.OnImprovement()
@@ -340,7 +244,7 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False, time_
 
     logger = ioh.logger.Analyzer(
         triggers=[trigger],
-        folder_name=f'../data/run_data_10D/A2_data_10D/A2_{algname}_B{budget_factor}_{dim}D',
+        folder_name=f'../data/run_data_5D/A2_data_5D/A2_{algname}_B{budget_factor}_{dim}D',
         algorithm_name=algname,
         store_positions=True,
     )
@@ -351,10 +255,7 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False, time_
         for iid in range(1, 6):
 
             problem = ioh.get_problem(fid, iid, dim, ProblemClass.BBOB)
-            
-            # If we want to time the run, wrap the problem in a TimedProblemWrapper
-            if time_run:
-                problem = TimedProblemWrapper(problem, start_eval=0, stop_eval=1000)
+    
 
             # Attach the logger to the problem
             problem.attach_logger(logger)
@@ -366,7 +267,7 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False, time_
                 np.random.seed(rep)
                 
                 if run_A2_from_scratch:
-                    if algname not in ["Same", "Non-elitist"]:
+                    if algname not in ["Elitist", "Non-elitist"]:
                         # Run A2 directly from scratch without CMA-ES warm-starting
                         algorithm = A2(problem, verbose=False, seed=np.random.get_state())
                         # Run for 1000 evals
@@ -387,65 +288,30 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False, time_
                             bound_correction='saturate',
                             sigma0 = 2.0,
                             x0 = np.zeros((5,1)),
-                            elitist = True if algname == "Same" else False
+                            elitist = True if algname == "Elitist" else False
                         ).run()
                     
-                elif algname in ["Same", "Non-elitist"]:
+                elif algname in ["Elitist", "Non-elitist"]:
                     alg = From_CMA_To_CMA(budget_factor, dim, algname, total_budget_factor=200)
                     alg(problem, algname)
                 else:
                     alg = Switched_From_CMA(budget_factor, dim, A2, total_budget_factor=200)
                     alg(problem, A2)
                 print("Evaluations:", problem.state.evaluations)
-                
-                # if find_best:
-                #     xs, ys = problem.get_array()
-
-                #     dim = xs.shape[1]
-                #     lower_bound = -5
-                #     upper_bound = 5
-                #     in_bounds_mask = np.all((xs >= lower_bound) & (xs <= upper_bound), axis=1)
-
-                #     xs_in = xs[in_bounds_mask]
-                #     ys_in = ys[in_bounds_mask]
-
-                #     if len(ys_in) > 0:
-                #         best_precision = np.min(ys_in - problem.optimum.y)
-                #         print(f"[Best precision] {best_precision:.6e}")
-                #     else:
-                #         best_precision = float("nan")
-                #         print("[Best precision] No in-bound evaluations found.")
-                #     print(best_precision)
-                #     # Prepare the output file path
-                #     output_file = f"../data/precision_files/{algname}_precisions_{budget_factor}.csv"
-
-                #     # Check if file exists to determine if we should write the header
-                #     write_header = not os.path.exists(output_file)
-
-                #     # Create one-row DataFrame and append to file
-                #     df = pd.DataFrame([{
-                #         "fid": fid,
-                #         "iid": iid,
-                #         "rep": rep,
-                #         "budget": budget_factor,
-                #         "algorithm": algname,
-                #         "precision": best_precision,
-                #     }])
-                #     df.to_csv(output_file, mode='a', header=write_header, index=False)
+        
 
                 problem.reset()
-                # if find_best:
-                #     problem.reset_log()
+            
             problem.detach_logger()
             
 def collect_all(x = None):
     budget_factor, dim = x
     # First, collect A1 data
-    collect_A1_data(budget_factor, dim, time_run=False)
+    collect_A1_data(budget_factor, dim)
     
     # Then collect A2 data
-    for A2, algname in zip([MLSL, DE, PSO, BFGS, None, None], ["MLSL", "DE", "PSO", "BFGS", "Same", "Non-elitist"]):
-        collect_A2(budget_factor, dim, A2, algname, time_run=False)
+    for A2, algname in zip([MLSL, DE, PSO, BFGS, None, None], ["MLSL", "DE", "PSO", "BFGS", "Non-elitist", "Elitist"]):
+        collect_A2(budget_factor, dim, A2, algname)
     # Only run BFGS
     # collect_A2(budget_factor, dim, BFGS, "BFGS", run_A2_from_scratch=False, time_run=False, find_best=False)
 
@@ -459,7 +325,7 @@ def collect_all(x = None):
 def get_combinations():
     budget_factors = [8*i for i in range (1,13)] + [50*i for i in range(1, 21)] # 10, 20, ..., 1000
     # budget_factors = [300]
-    dim = 10
+    dim = 5
     return [(bf, dim) for bf in budget_factors]
 
 # if __name__=='__main__':
@@ -485,6 +351,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--budget', type=int, required=True, help='Budget factor (e.g., 100, 200, ...)')
     args = parser.parse_args()
-    dim = 10  # Fixed dimensionality!
+    dim = 5  # Fixed dimensionality!
     budget_factor = args.budget
     collect_all((budget_factor, dim))

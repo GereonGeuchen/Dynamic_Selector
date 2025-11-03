@@ -222,11 +222,11 @@ class BFGS(Algorithm):
                 except _LineSearchError:
                     if self.verbose:
                         print('break because of line search error')
-                    self.alpha_k = 0.0
-                    old_old_fval = old_fval
-                    old_fval = self.func(xk)
-                    gfkp1 = gfk
-
+                    # self.alpha_k = 0.0
+                    # old_old_fval = old_fval
+                    # old_fval = self.func(xk)
+                    # gfkp1 = gfk
+                    break
 
             # Save parameters for plot and analysis
             self.stepsizes.append(self.alpha_k)

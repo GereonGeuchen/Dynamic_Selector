@@ -18,10 +18,8 @@ class DE(Algorithm):
         if self.uses_old_ioh:
             bounds = Bounds(self.func.lowerbound, self.func.upperbound)
             self.de_wrapper = DifferentialEvolutionSolver(
-                internal_eval, 
-                bounds=bounds, 
-                tol=0,                # ← disable relative convergence
-                atol=0               # ← disable absolute convergence
+                self.func, 
+                bounds=bounds
             )
         else:
             bounds = Bounds(self.func.bounds.lb, self.func.bounds.ub)
@@ -29,9 +27,7 @@ class DE(Algorithm):
                 return self.func(x)
             self.de_wrapper = DifferentialEvolutionSolver(
                 internal_eval, 
-                bounds=bounds, 
-                tol=0,                # ← disable relative convergence
-                atol=0               # ← disable absolute convergence
+                bounds=bounds
             )
             #         self.random_number_generator = check_random_state(seed=None)
 
