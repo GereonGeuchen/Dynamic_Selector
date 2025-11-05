@@ -16,7 +16,7 @@ mkdir -p "$WORKDIR/logs"
 
 # First sequence: 8 * [1..12]
 for i in $(seq 1 12); do
-  BUDGETS+=($(8 * i))
+  BUDGETS+=($((8 * i)))
 done
 
 # Second sequence: 50 * [1..20]

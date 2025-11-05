@@ -212,8 +212,9 @@ class MLSL(Algorithm):
                             return self.func(x)
 #                         try:
 #                         print(bounds)
-                        solution = minimize(internal_func, self.xr[i], method='Powell', bounds=bounds,
-                                            options={'ftol': 1e-8, 'maxfev': local_budget})   
+                        if local_budget != 0:
+                            solution = minimize(internal_func, self.xr[i], method='Powell', bounds=bounds,
+                                                options={'ftol': 1e-8, 'maxfev': local_budget})   
                         # solution = minimize(internal_func, self.xr[i], method='Powell', bounds=bounds,
                         #                 options={'ftol': 1e-8}) 
 #                         except:

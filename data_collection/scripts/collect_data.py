@@ -60,13 +60,13 @@ class TrackedParameters:
     pc_mean: float = 0
     
     # Anja parameters:
-    ps_ratio: float = 0
+    # ps_ratio: float = 0
     ps_squared: float = 0
     loglikelihood: float = 0
     
     # check if this should only be one parameter
     mhl_norm: float = 0
-    mhl_sum: float = 0
+    mhl_mean: float = 0
     
     def update(self, parameters: Parameters):
         self.sigma = parameters.sigma
@@ -76,7 +76,7 @@ class TrackedParameters:
             setattr(self, f'{attr}_mean'.lower(), np.mean(getattr(parameters, attr)))
 
         self.ps_squared = np.sum(parameters.ps ** 2)
-        self.ps_ratio = np.sqrt(self.ps_squared) / parameters.chiN
+        # self.ps_ratio = np.sqrt(self.ps_squared) / parameters.chiN
 
         sigma2 = self.sigma ** 2
         
@@ -94,7 +94,7 @@ class TrackedParameters:
             np.power(np.dot(parameters.B.T, delta.T) / parameters.D, 2).sum(axis=0)
         ) / self.sigma
         self.mhl_norm = np.linalg.norm(mhl)
-        self.mhl_sum = mhl.sum()
+        self.mhl_mean = mhl.mean()
 
             
 class TrackedCMAES(ModularCMAES):
@@ -310,8 +310,10 @@ def collect_all(x = None):
     collect_A1_data(budget_factor, dim)
     
     # Then collect A2 data
-    for A2, algname in zip([MLSL, DE, PSO, BFGS, None, None], ["MLSL", "DE", "PSO", "BFGS", "Non-elitist", "Elitist"]):
-        collect_A2(budget_factor, dim, A2, algname)
+    # for A2, algname in zip([MLSL, DE, PSO, BFGS, None, None], ["MLSL", "DE", "PSO", "BFGS", "Non-elitist", "Elitist"]):
+    #     collect_A2(budget_factor, dim, A2, algname)
+
+
     # Only run BFGS
     # collect_A2(budget_factor, dim, BFGS, "BFGS", run_A2_from_scratch=False, time_run=False, find_best=False)
 
