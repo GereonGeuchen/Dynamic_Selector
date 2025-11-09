@@ -4,7 +4,7 @@ import ioh
 from ioh import ProblemClass
 import warnings
 from sklearn.preprocessing import MinMaxScaler
-
+import numpy as np
 
 # Function that goes through the IOH logger files and creates clean CSV files containing of the relevant data for the pflacco computation.      
 def process_ioh_data(base_path):
@@ -235,13 +235,72 @@ def normalize_ela_with_precisions(path_in, path_out):
     df_final.to_csv(path_out, index=False)
     print(f"Saved normalized file to: {path_out}")
 
+def normalize_and_log_precision_files(precision_path, output_path):
+    df = pd.read_csv(precision_path)
+
+    scaler = MinMaxScaler(feature_range=(1e-12, 1))
+
+    def scale_and_log(group):
+        group = group.copy()
+        # scale in place
+        group["precision"] = scaler.fit_transform(group[["precision"]])
+        # take log 
+        group["precision"] = np.log10(group["precision"])
+        return group
+
+    df = df.groupby("fid", group_keys=False).apply(scale_and_log)
+
+    df.to_csv(output_path, index=False)
+
+def normalize_test_ela(train_csv_path, test_csv_path, test_out_path):
+    # Load training and test data
+    df_train = pd.read_csv(train_csv_path)
+    df_test = pd.read_csv(test_csv_path)
+
+    # Define index columns
+    index_cols = ["fid", "iid", "rep"]
+
+    # Identify feature columns (anything that's not an index col)
+    feature_cols = [col for col in df_train.columns if col not in index_cols]
+
+    # Fit scaler on training data's feature columns
+    feature_scaler = MinMaxScaler()
+    feature_scaler.fit(df_train[feature_cols])
+
+    # Transform test data's feature columns
+    df_scaled_features = pd.DataFrame(
+        feature_scaler.transform(df_test[feature_cols]),
+        columns=feature_cols,
+        index=df_test.index
+    )
+
+    # Reattach index columns and save
+    df_final = pd.concat([df_test[index_cols], df_scaled_features], axis=1)
+    df_final = df_final.sort_values(by=["fid", "iid", "rep"]).reset_index(drop=True)
+
+    if not os.path.exists(os.path.dirname(test_out_path)):
+        os.makedirs(os.path.dirname(test_out_path))
+    df_final.to_csv(test_out_path, index=False)
+
+    print(f"Saved normalized test file to: {test_out_path}")
+
 if __name__ == "__main__":
-    base_data_path = "../data/run_data_5D/A2_data_5D"
+    base_data_path = "../data/run_data_5D/A2_data_5D_test"
     # Ignore future warnings for cleaner output
     warnings.filterwarnings("ignore", category=FutureWarning)
+    # normalize_and_log_precision_files("A2_precisions.csv", "A2_precisions_normalized_log10.csv")
+    # process_ioh_data(base_data_path)
+    # add_algorithm_precisions(
+    #     ela_dir="../data/ela_with_cma_std/A1_data_5D",
+    #     precision_csv="A2_precisions.csv",
+    #     output_dir="../data/ela_with_precisions/A1_data_5D"
+    # 
+
     budgets = [8*i for i in range(1, 13)] + [50*i for i in range(2, 21)]
+
     for budget in budgets:
-        normalize_ela_with_precisions(
-            path_in=f"../data/ela_with_cma_and_algo/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv",
-            path_out=f"../data/ela_with_cma_and_algo_normalized/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv"
+        normalize_test_ela(
+            train_csv_path=f"../data/ela_with_cma_std/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv",
+            test_csv_path=f"../data/ela_with_cma_std/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv",
+            test_out_path=f"../data/ela_normalised/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv"
         )

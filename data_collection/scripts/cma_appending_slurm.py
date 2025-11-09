@@ -3,6 +3,7 @@ import sys
 import pandas as pd
 from glob import glob
 from io import StringIO
+import numpy as np
 
 def extract_final_internal_state(dat_path, target_iid, target_rep):
     try:
@@ -94,6 +95,42 @@ def append_cma_state_to_ela(ela_dir, run_dir, output_dir, budgets):
         df_combined.to_csv(out_path, index=False)
         print(f"Saved: {out_path}")
 
+# Function that adds the new "internal" features
+def append_standard_deviation_stats(budget, ela_path, raw_data_path, output_path):
+    df_ela = pd.read_csv(ela_path)
+    df_raw = pd.read_csv(raw_data_path)
+
+    x_cols = [col for col in df_raw.columns if col.startswith("x")]
+    tail_counts = {8: [1], 16: [1,2], 24: [1, 2, 3], 32: [1, 2, 4], 40: [1, 2, 5], float("inf"): [1, 2, 5]}
+    applicable_ns = next(v for k, v in tail_counts.items() if budget <= k)
+
+    appended_rows = []
+
+    for (fid, iid, rep), group in df_raw.groupby(["fid", "iid", "rep"]):
+        group = group.reset_index(drop=True)
+        row = {"fid": fid, "iid": iid, "rep": rep}
+
+        for n in applicable_ns:
+            k = 8 * n
+            tail = group.iloc[-k:] if len(group) >= k else group
+
+            row[f"std_y_last_{n}"] = float(np.std(tail["true_y"].values, ddof=1))
+
+            stds_x = np.std(tail[x_cols].values, axis=0, ddof=1)
+            row[f"mean_std_x_last_{n}"] = float(np.mean(stds_x))
+
+        appended_rows.append(row)
+
+    df_stats = pd.DataFrame(appended_rows)
+    df_combined = pd.merge(df_ela, df_stats, on=["fid", "iid", "rep"], how="left")
+
+    if not os.path.exists(os.path.dirname(output_path)):
+        os.makedirs(os.path.dirname(output_path))
+
+    df_combined.to_csv(output_path, index=False)
+    print(f"Tail statistics added and saved to: {output_path}")
+
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
@@ -104,9 +141,14 @@ if __name__ == "__main__":
 
     # budget  =100
 
-    append_cma_state_to_ela(
-        ela_dir="../data/raw_ela_data/A1_data_ela",
-        run_dir="../data/run_data_5D/A1_data_5D",
-        output_dir="../data/ela_with_cma/A1_data_5D",
-        budgets=[budget]
-    )
+    # append_cma_state_to_ela(
+    #     ela_dir="../data/raw_ela_data/A1_data_ela_test",
+    #     run_dir="../data/run_data_5D/A1_data_5D_test",
+    #     output_dir="../data/ela_with_cma/A1_data_5D_test",
+    #     budgets=[budget]
+    # )
+
+    append_standard_deviation_stats(budget=budget,
+                                    ela_path=f"../data/ela_with_cma/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv",
+                                    raw_data_path=f"../data/run_data_5D/A1_data_5D/A1_B{budget}_5D.csv",
+                                    output_path=f"../data/ela_with_cma_std/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv")

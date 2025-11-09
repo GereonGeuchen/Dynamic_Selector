@@ -20,8 +20,8 @@ from classical_ela_features import ( # type: ignore
 )
 
 def calculate_ela_features(budget):
-    base_folder = "../data/run_data_5D/A1_data_5D"   
-    output_folder = "../data/raw_ela_data/A1_data_ela"           
+    base_folder = "../data/run_data_5D/A1_data_5D_test"   
+    output_folder = "../data/raw_ela_data/A1_data_ela_test"           
 
     os.makedirs(output_folder, exist_ok=True)
     filename = f"A1_B{budget}_5D.csv"
@@ -168,4 +168,9 @@ if __name__ == "__main__":
     #                                     ela_path=f"../data/ela_with_cma/A1_data_with_cma_testSet/A1_B{budget}_5D_ela_with_state.csv",
     #                                     raw_data_path=f"../data/run_data_csvs/A1_data_testSet/A1_B{budget}_5D.csv",
     #                                     output_path=f"../data/ela_with_cma_std/A1_data_ela_cma_std_testSet/A1_B{budget}_5D_ela_with_state.csv")
-    calculate_ela_features(args.budget)
+    append_standard_deviation_stats(
+        budget = args.budget,
+        ela_path = f"../data/ela_with_cma/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv",
+        raw_data_path = f"../data/run_data_5D/A1_data_5D_test/A1_B{budget}_5D.csv",
+        output_path = f"../data/ela_with_cma_std/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv"
+    )

@@ -200,7 +200,7 @@ def collect_A1_data(budget_factor, dim = 5):
 
     logger = ioh.logger.Analyzer(
         triggers=[trigger],
-        folder_name=f'../data/run_data_5D/A1_data_5D/A1_B{budget_factor}_{dim}D',
+        folder_name=f'../data/run_data_5D/A1_data_5D_test/A1_B{budget_factor}_{dim}D',
         algorithm_name='ModCMA_A1',
         store_positions=True
     )
@@ -208,7 +208,7 @@ def collect_A1_data(budget_factor, dim = 5):
     logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])
     
     for fid in range(1,25):
-        for iid in range(1, 6):
+        for iid in range(6, 8):
             problem = ioh.get_problem(fid, iid, dim, ProblemClass.BBOB)
 
             
@@ -244,7 +244,7 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False):
 
     logger = ioh.logger.Analyzer(
         triggers=[trigger],
-        folder_name=f'../data/run_data_5D/A2_data_5D/A2_{algname}_B{budget_factor}_{dim}D',
+        folder_name=f'../data/run_data_5D/A2_data_5D_test/A2_{algname}_B{budget_factor}_{dim}D',
         algorithm_name=algname,
         store_positions=True,
     )
@@ -252,7 +252,7 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False):
     logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])
 
     for fid in range(1, 25):
-        for iid in range(1, 6):
+        for iid in range(6, 8):
 
             problem = ioh.get_problem(fid, iid, dim, ProblemClass.BBOB)
     
@@ -310,8 +310,8 @@ def collect_all(x = None):
     collect_A1_data(budget_factor, dim)
     
     # Then collect A2 data
-    # for A2, algname in zip([MLSL, DE, PSO, BFGS, None, None], ["MLSL", "DE", "PSO", "BFGS", "Non-elitist", "Elitist"]):
-    #     collect_A2(budget_factor, dim, A2, algname)
+    for A2, algname in zip([MLSL, DE, PSO, BFGS, None, None], ["MLSL", "DE", "PSO", "BFGS", "Non-elitist", "Elitist"]):
+        collect_A2(budget_factor, dim, A2, algname)
 
 
     # Only run BFGS
