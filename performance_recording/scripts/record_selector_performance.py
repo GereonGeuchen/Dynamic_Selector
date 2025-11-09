@@ -5,8 +5,8 @@ from functools import reduce
 
 def crossvalidated_static_predictions(
     budget,
-    selector_dir="../data/models/algo_performance_models",
-    ela_template="../data/ela_with_cma_and_algo_normalized/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv",
+    selector_dir="../data/algo_performance_models_normalised",
+    ela_template="../data/ela_normalized_with_precisions/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv",
     precision_df=None
 ):
     selector_path = os.path.join(selector_dir, f"model_B{budget}.pkl")
