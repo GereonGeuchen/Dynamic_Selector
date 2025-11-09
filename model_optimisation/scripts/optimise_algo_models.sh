@@ -7,7 +7,7 @@ ENV_PATH="$HOME/general-env"
 WORKDIR="$HOME/Dokumente/Dynamic_Selector/model_optimisation/scripts"
 
 # Path to your Python script
-PY_SCRIPT="optimisation_slurm.py"
+PY_SCRIPT="optimisation_slurm_selection_models.py"
 
 # Create logs directory
 mkdir -p "$WORKDIR/logs"
