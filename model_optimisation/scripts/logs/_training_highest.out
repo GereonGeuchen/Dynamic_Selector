@@ -1,0 +1,9 @@
+[INFO][abstract_initial_design.py:139] Using 50 initial design configurations and 0 additional configurations.
+[INFO][abstract_intensifier.py:307] Using only one seed for deterministic scenario.
+Evaluating config: Configuration(values={
+  'rf_classifierbootstrap': np.False_,
+  'rf_classifiermax_features': 0.1527131210081,
+  'rf_classifiermin_samples_leaf': 20,
+  'rf_classifiermin_samples_split': 11,
+  'rf_classifiern_estimators': 24,
+})

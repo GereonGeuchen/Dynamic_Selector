@@ -26,13 +26,13 @@ REPS = list(range(20))
 
 # === Paths ===
 
-ELA_DIR_SWITCH = "../data/ela_with_switch_budget/A1_data_5D"
+ELA_DIR_SWITCH = "../data/ela_with_switch_budget/A1_data_5D_per_run_highest"
 ELA_DIR_ALGO = "../data/ela_algo/A1_data_5D"
 PRECISION_FILE = "../data/A2_precisions_normalized_log10.csv"
-CV_MODELS_DIR = "../data/models/trained_models/algo_performance_models_cv"
+CV_MODELS_DIR = "../data/models/trained_models/algo_performance_models_cv_per_run_highest"
 UNTRAINED_PERF_MODELS_DIR = "../data/models/untrained_models/algo_performance_models"
-SMAC_OUTPUT_DIR = "smac_output_switch_optimisation"
-OUTPUT_PATH = "../data/models/tuned_models/switching_models"
+SMAC_OUTPUT_DIR = "smac_output_switch_optimisation_per_run_highest"
+OUTPUT_PATH = "../data/models/tuned_models/switching_models_per_run_highest"
 
 
 # ========== Helper classes ==========
