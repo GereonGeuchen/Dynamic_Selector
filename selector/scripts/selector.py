@@ -222,14 +222,14 @@ class SwitchingSelector:
 
 if __name__ == "__main__":
     selector = SwitchingSelector(
-        selector_model_dir="../data/trained_models/switching_models",
+        selector_model_dir="../data/trained_models/switching_models_highest",
         performance_model_dir="../data/trained_models/algo_performance_models_trained"
     )
     selector.evaluate_selector_to_csv(
         fids=list(range(1, 25)),
         iids=[6, 7],
         reps=list(range(20)),
-        save_path="../results/selector_results_algo.csv",
+        save_path="../results/selector_results_algo_highest.csv",
         ela_dir="../data/A1_data_5D_test",
         precision_file="../data/A2_precisions_test.csv"
     )

@@ -11,9 +11,9 @@ PY_SCRIPT="switch_model_optimisation.py"
 sbatch <<EOF
 #!/bin/bash
 #SBATCH -A thes2015
-#SBATCH --job-name=${BUDGET}_training_highest
-#SBATCH --output=${WORKDIR}/logs/${BUDGET}_training_highest.out
-#SBATCH --error=${WORKDIR}/logs/${BUDGET}_training_highest.err
+#SBATCH --job-name=${BUDGET}_highest
+#SBATCH --output=${WORKDIR}/logs/${BUDGET}_highest.out
+#SBATCH --error=${WORKDIR}/logs/${BUDGET}_highest.err
 #SBATCH --time=24:00:00
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=5

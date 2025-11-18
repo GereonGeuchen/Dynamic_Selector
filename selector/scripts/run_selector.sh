@@ -15,9 +15,9 @@ mkdir -p "$WORKDIR/logs"
 sbatch <<EOF
 #!/bin/bash
 #SBATCH -A thes2015
-#SBATCH --job-name=ela_B${BUDGET}
-#SBATCH --output=${WORKDIR}/logs/ela_B${BUDGET}.out
-#SBATCH --error=${WORKDIR}/logs/ela_B${BUDGET}.err
+#SBATCH --job-name=selector_highest
+#SBATCH --output=${WORKDIR}/logs/selector_highest.out
+#SBATCH --error=${WORKDIR}/logs/selector_highest.err
 #SBATCH --time=01:00:00
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=1
