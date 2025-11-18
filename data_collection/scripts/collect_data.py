@@ -197,12 +197,15 @@ class Switched_From_CMA():
         
 def collect_A1_data(budget_factor, dim = 5):
     trigger = ioh.logger.trigger.Always()
+    additional_property = ioh.logger.property.RawYBest()
+
 
     logger = ioh.logger.Analyzer(
         triggers=[trigger],
         folder_name=f'../data/run_data_5D/A1_data_5D_test/A1_B{budget_factor}_{dim}D',
         algorithm_name='ModCMA_A1',
-        store_positions=True
+        store_positions=True,
+        additional_properties=[additional_property]
     )
     tracked_parameters = TrackedParameters()
     logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])

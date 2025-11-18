@@ -284,6 +284,27 @@ def normalize_test_ela(train_csv_path, test_csv_path, test_out_path):
 
     print(f"Saved normalized test file to: {test_out_path}")
 
+def add_current_best(df: pd.DataFrame, gen_size: int = 8):
+
+    df = df.copy()
+
+    def process_one_run(run_df):
+        # Assign generation index inside this run
+        run_df = run_df.copy()
+        run_df["generation"] = (run_df["evaluations"] - 1) // gen_size
+
+        # Best raw_y per generation
+        gen_min = run_df.groupby("generation")["raw_y"].min()
+        gen_best_cum = gen_min.cummin()
+
+        # Map cumulative best back to all rows
+        run_df["current_best"] = run_df["generation"].map(gen_best_cum)
+
+        return run_df.drop(columns=["generation"])
+
+    # Apply per unique run
+    return df.groupby(["fid", "iid", "rep"], group_keys=False).apply(process_one_run)
+
 if __name__ == "__main__":
     base_data_path = "../data/run_data_5D/A2_data_5D_test"
     # Ignore future warnings for cleaner output
@@ -298,9 +319,15 @@ if __name__ == "__main__":
 
     budgets = [8*i for i in range(1, 13)] + [50*i for i in range(2, 21)]
 
+    # for budget in budgets:
+    #     normalize_test_ela(
+    #         train_csv_path=f"../data/ela_with_cma_std/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv",
+    #         test_csv_path=f"../data/ela_with_cma_std/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv",
+    #         test_out_path=f"../data/ela_normalised/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv"
+    #     )
     for budget in budgets:
-        normalize_test_ela(
-            train_csv_path=f"../data/ela_with_cma_std/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv",
-            test_csv_path=f"../data/ela_with_cma_std/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv",
-            test_out_path=f"../data/ela_normalised/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv"
-        )
+        add_current_best(
+            pd.read_csv(f"../data/run_data_5D/A1_data_5D/A1_B{budget}_5D.csv"),
+
+        ).to_csv(f"../data/run_data_5D/A1_data_5D/A1_B{budget}_5D_with_current_best.csv", index=False)
+        print(f"Added current best to A1_B{budget}_5D.csv")
