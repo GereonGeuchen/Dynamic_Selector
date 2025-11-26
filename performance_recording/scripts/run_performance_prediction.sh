@@ -15,9 +15,9 @@ mkdir -p "$WORKDIR/logs"
 sbatch <<EOF
 #!/bin/bash
 #SBATCH -A thes2015
-#SBATCH --job-name=${BUDGET}_training
-#SBATCH --output=${WORKDIR}/logs/${BUDGET}_training.out
-#SBATCH --error=${WORKDIR}/logs/${BUDGET}_training.err
+#SBATCH --job-name=${BUDGET}_pp_gradient_fid_scaling
+#SBATCH --output=${WORKDIR}/logs/${BUDGET}_pp_gradient_fid_scaling.out
+#SBATCH --error=${WORKDIR}/logs/${BUDGET}_pp_gradient_fid_scaling.err
 #SBATCH --time=10:00:00
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=1

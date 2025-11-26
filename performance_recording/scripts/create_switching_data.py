@@ -144,24 +144,30 @@ def mark_switch_budget_and_greater_budgets_per_run(
         df.to_csv(out_path, index=False)
 
 if __name__ == "__main__":
-    ela_with_state_dir = "../data/ela_normalized_with_precisions/A1_data_5D"
-    best_budgets_csv = "../data/selector_performances/best_budgets.csv"
-    output_dir = "../data/ela_with_switch_budget/A1_data_5D_highest"
+    # ela_with_state_dir = "../data/ela_normalized_with_precisions/A1_data_5D"
+    # best_budgets_csv = "../data/selector_performances/best_budgets.csv"
+    # output_dir = "../data/ela_with_switch_budget/A1_data_5D_highest"
 
-    # # compute_best_budgets(
-    # #     "../data/selector_performances/predicted_static_precisions_rep_fold_all_sp.csv"
-    # # ).to_csv(best_budgets_csv, index=False)
+    # make_run_specific_best_budgets(
+    #     input_csv="../data/selector_performances/gradient_normalized_partial/predicted_static_precisions.csv",
+    #     output_csv="../data/selector_performances/gradient_normalized_partial/run_specific_best_budgets_highest.csv",
+    #     tie_break="highest"
+    # )
 
-    mark_switch_budget_and_greater_budgets(
-        ela_with_state_dir,
-        best_budgets_csv,
-        output_dir,
-        min=False
-    )
+    # compute_best_budgets(
+    #     "../data/selector_performances/predicted_static_precisions_rep_fold_all_sp.csv"
+    # ).to_csv(best_budgets_csv, index=False)
+
+    # mark_switch_budget_and_greater_budgets(
+    #     ela_with_state_dir,
+    #     best_budgets_csv,
+    #     output_dir,
+    #     min=False
+    # )
     # make_run_specific_best_budgets("../data/selector_performances/predicted_static_precisions_all_sp.csv",
     #                                "../data/selector_performances/run_specific_best_budgets_all_sp_highest.csv", tie_break="highest")
-    # mark_switch_budget_and_greater_budgets_per_run(
-    #     ela_with_state_dir="../data/ela_normalized_with_precisions/A1_data_5D",
-    #     best_budgets_csv="../data/selector_performances/run_specific_best_budgets_all_sp_highest.csv",
-    #     output_dir="../data/ela_with_switch_budget/A1_data_5D_per_run_highest"
-    # )
+    mark_switch_budget_and_greater_budgets_per_run(
+        ela_with_state_dir="../data/ela_normalized_with_precisions/A1_data_5D_gradient_normalized_partial",
+        best_budgets_csv="../data/selector_performances/gradient_normalized_partial/run_specific_best_budgets_highest.csv",
+        output_dir="../data/ela_with_switch_budget/A1_data_5D_per_run_gradient_normalized_partial_highest"
+    )

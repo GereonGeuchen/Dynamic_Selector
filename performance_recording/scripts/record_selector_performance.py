@@ -5,8 +5,8 @@ from functools import reduce
 
 def crossvalidated_static_predictions(
     budget,
-    selector_dir="../data/algo_performance_models_normalised",
-    ela_template="../data/ela_normalized_with_precisions/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv",
+    selector_dir="../data/algo_performance_models_gradient_normalized_partial",
+    ela_template="../data/ela_normalized_with_precisions/A1_data_5D_gradient_normalized_partial/A1_B{budget}_5D_ela_with_state.csv",
     precision_df=None
 ):
     selector_path = os.path.join(selector_dir, f"model_B{budget}.pkl")
@@ -68,17 +68,17 @@ def crossvalidated_static_predictions(
 
 
 
-def build_full_crossvalidated_table(precision_path, output_dir = "../data/selector_performances"):
+def build_full_crossvalidated_table(precision_path, output_dir = "../data/selector_performances/gradient_normalized_partial"):
     all_dfs = []
     all_algos = []
 
     os.makedirs(output_dir, exist_ok=True)
-    precision_output = os.path.join(output_dir, "predicted_static_precisions_rep_fold_all_sp.csv")
-    algo_output = os.path.join(output_dir, "selected_algorithms_rep_fold_all_sp.csv")
+    precision_output = os.path.join(output_dir, "predicted_static_precisions.csv")
+    algo_output = os.path.join(output_dir, "selected_algorithms.csv")
 
     precision_df = pd.read_csv(precision_path)
 
-    budgets = [8*i for i in range(1, 13)] + [50*i for i in range(2, 21)]
+    budgets = [50*i for i in range(1, 21)]
 
     for budget in budgets:
         print(f"Processing budget {budget}...")
@@ -112,5 +112,5 @@ def build_full_crossvalidated_table(precision_path, output_dir = "../data/select
 
 if __name__ == "__main__":
     build_full_crossvalidated_table(
-        "../data/A2_precisions.csv"
+        "../data/A2_precisions_50.csv"
     )
