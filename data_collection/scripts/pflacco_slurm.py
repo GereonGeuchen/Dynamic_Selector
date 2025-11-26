@@ -21,10 +21,10 @@ from classical_ela_features import ( # type: ignore
 
 def calculate_ela_features(budget):
     base_folder = "../data/run_data_5D/A1_data_5D_test"   
-    output_folder = "../data/raw_ela_data/A1_data_ela_test"           
+    output_folder = "../data/raw_ela_data/A1_data_ela_test_gradient"           
 
     os.makedirs(output_folder, exist_ok=True)
-    filename = f"A1_B{budget}_5D.csv"
+    filename = f"A1_B{budget}_5D_with_current_best.csv"
     filepath = os.path.join(base_folder, filename)
     df = pd.read_csv(filepath)
 
@@ -78,6 +78,33 @@ def calculate_ela_features(budget):
             features.update(calculate_nbc(X, y, fast_k = 2))
         else:
             features.update(calculate_nbc(X, y))
+
+        # ------------------------------------------------------------------
+        # NEW: best-so-far progression features over intervals of evaluations
+        # ------------------------------------------------------------------
+        next_mult = ((budget + 7) // 8) * 8
+        intervals, labels = make_intervals(next_mult)
+
+        if intervals:
+            # index by evaluations for quick lookup of current_best
+            eval_indexed = group.set_index("evaluations")
+
+            for (start, end), perc_label in zip(intervals, labels):
+                # ensure both evaluation points exist
+                if start not in eval_indexed.index or end not in eval_indexed.index:
+                    continue
+
+                low_bsf = float(eval_indexed.loc[start, "current_best"])
+                high_bsf = float(eval_indexed.loc[end, "current_best"])
+                width = end - start
+                if width <= 0:
+                    continue
+
+                # (high - low) / (width / 8) = (high - low) * 8 / width
+                gradient = ((high_bsf - low_bsf) * 8.0) / width
+
+                feat_name = f"bsf-progression_{perc_label}"
+                features[feat_name] = gradient
 
         # Add identifying metadata
         features["fid"] = fid
@@ -154,6 +181,69 @@ def append_standard_deviation_stats(budget, ela_path, raw_data_path, output_path
     df_combined.to_csv(output_path, index=False)
     print(f"Tail statistics added and saved to: {output_path}")
 
+def make_intervals(n: float):
+    candidates = []
+    if  n <= 104:
+        if n < 16:
+            candidates = []
+        if n == 16:
+            candidates = [(8, 16)]
+        elif n == 24:
+            candidates = [(8, 16), (16, 24)]
+        elif n == 32:
+            candidates = [(8, 16), (16, 24), (24, 32)]
+        elif n == 40:
+            candidates = [(8, 16), (16, 24), (24, 32), (32, 40)]
+        elif n == 48:
+            candidates = [(8, 16), (16, 32), (32, 40), (40, 48)]
+        elif n == 56:
+            candidates = [(8, 16), (16, 32), (32, 48), (48, 56)]
+        elif n == 64:
+            candidates = [(8, 16), (16, 40), (40, 56), (56, 64)]
+        elif n == 72:
+            candidates = [(8, 16), (16, 40), (40, 64), (64, 72)]
+        elif n == 80:
+            candidates = [(8, 16), (16, 48), (48, 72), (72, 80)]
+        elif n == 88:
+            candidates = [(8, 16), (16, 48), (48, 80), (80, 88)]
+        elif n == 96:
+            candidates = [(8, 16), (16, 56), (56, 88), (88, 96)]
+        elif n == 104:
+            candidates = [(8, 16), (16, 56), (56, 96), (96, 104)]
+    else:
+        n /= 8
+        print(0.10 * n)
+        b1 = 8 * max(1, round(0.10 * n)) 
+        b2 = 8 * round(0.50 * n) 
+        b3 = 8 * round(0.90 * n) 
+        b4 = 8 * round(n) 
+
+        # Build intervals as (start, end)
+        candidates = [
+            (8, b1),
+            (b1, b2),
+            (b2, b3),
+            (b3, b4)
+        ]
+
+    unique_intervals = []
+    for start, end in candidates:
+        if end <= start:
+            continue
+        if unique_intervals and (start, end) == unique_intervals[-1]:
+            continue
+        unique_intervals.append((start, end))
+
+    labels_map = {
+        0: [],
+        1: ["1.0"],
+        2: ["0.5", "1.0"],
+        3: ["0.5", "0.9", "1.0"],
+        4: ["0.1", "0.5", "0.9", "1.0"],
+    }
+    labels = labels_map.get(len(unique_intervals), ["0.1", "0.5", "0.9", "1.0"][:len(unique_intervals)])
+
+    return unique_intervals, labels
 
 
 if __name__ == "__main__":
@@ -161,16 +251,18 @@ if __name__ == "__main__":
     parser.add_argument("--budget", type=int, required=True, help="Budget to process")
     args = parser.parse_args()
     budget = args.budget
-    # with warnings.catch_warnings():
-    #     warnings.filterwarnings("ignore", category=RuntimeWarning)
-    #     warnings.filterwarnings("ignore", category=UserWarning)
-    #     append_standard_deviation_stats(budget=budget,
-    #                                     ela_path=f"../data/ela_with_cma/A1_data_with_cma_testSet/A1_B{budget}_5D_ela_with_state.csv",
-    #                                     raw_data_path=f"../data/run_data_csvs/A1_data_testSet/A1_B{budget}_5D.csv",
-    #                                     output_path=f"../data/ela_with_cma_std/A1_data_ela_cma_std_testSet/A1_B{budget}_5D_ela_with_state.csv")
-    append_standard_deviation_stats(
-        budget = args.budget,
-        ela_path = f"../data/ela_with_cma/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv",
-        raw_data_path = f"../data/run_data_5D/A1_data_5D_test/A1_B{budget}_5D.csv",
-        output_path = f"../data/ela_with_cma_std/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv"
-    )
+    calculate_ela_features(budget=budget)
+    # # with warnings.catch_warnings():
+    # #     warnings.filterwarnings("ignore", category=RuntimeWarning)
+    # #     warnings.filterwarnings("ignore", category=UserWarning)
+    # #     append_standard_deviation_stats(budget=budget,
+    # #                                     ela_path=f"../data/ela_with_cma/A1_data_with_cma_testSet/A1_B{budget}_5D_ela_with_state.csv",
+    # #                                     raw_data_path=f"../data/run_data_csvs/A1_data_testSet/A1_B{budget}_5D.csv",
+    # #                                     output_path=f"../data/ela_with_cma_std/A1_data_ela_cma_std_testSet/A1_B{budget}_5D_ela_with_state.csv")
+    # append_standard_deviation_stats(
+    #     budget = args.budget,
+    #     ela_path = f"../data/ela_with_cma/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv",
+    #     raw_data_path = f"../data/run_data_5D/A1_data_5D_test/A1_B{budget}_5D.csv",
+    #     output_path = f"../data/ela_with_cma_std/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv"
+    # )
+  

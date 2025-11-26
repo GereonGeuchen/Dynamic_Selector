@@ -142,13 +142,13 @@ if __name__ == "__main__":
     # budget  =100
 
     # append_cma_state_to_ela(
-    #     ela_dir="../data/raw_ela_data/A1_data_ela_test",
+    #     ela_dir="../data/raw_ela_data/A1_data_ela_test_gradient",
     #     run_dir="../data/run_data_5D/A1_data_5D_test",
-    #     output_dir="../data/ela_with_cma/A1_data_5D_test",
+    #     output_dir="../data/ela_with_cma/A1_data_5D_test_gradient",
     #     budgets=[budget]
     # )
 
     append_standard_deviation_stats(budget=budget,
-                                    ela_path=f"../data/ela_with_cma/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv",
-                                    raw_data_path=f"../data/run_data_5D/A1_data_5D/A1_B{budget}_5D.csv",
-                                    output_path=f"../data/ela_with_cma_std/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv")
+                                    ela_path=f"../data/ela_with_cma/A1_data_5D_test_gradient/A1_B{budget}_5D_ela_with_state.csv",
+                                    raw_data_path=f"../data/run_data_5D/A1_data_5D_test/A1_B{budget}_5D_with_current_best.csv",
+                                    output_path=f"../data/ela_with_cma_std/A1_data_5D_test_gradient2/A1_B{budget}_5D_ela_with_state.csv")

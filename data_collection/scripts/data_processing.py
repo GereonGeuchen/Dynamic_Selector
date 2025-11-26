@@ -198,90 +198,136 @@ def add_algorithm_precisions(ela_dir, precision_csv, output_dir):
 
         print(f"Wrote {output_path}")
 
-def normalize_ela_with_precisions(path_in, path_out):
+def normalize_ela_with_precisions(
+    path_in,
+    path_out,
+    start_col=None,
+    end_col=None
+):
     df = pd.read_csv(path_in)
 
-    index_cols = ["fid", "iid", "rep"]
-    algo_cols = ["BFGS", "DE", "MLSL", "Non-elitist", "PSO", "Elitist"]
-    feature_cols = [col for col in df.columns if col not in index_cols + algo_cols]
+    # Columns that must NOT be normalized
+    index_cols = ["fid", "iid", "rep", "high_level_category"]
+    algo_cols = ["BFGS", "DE", "Elitist", "MLSL", "Non-elitist", "PSO"]
 
-    # Normalize feature columns globally to [0, 1]
-    feature_scaler = MinMaxScaler()
-    df_scaled_features = pd.DataFrame(
-        feature_scaler.fit_transform(df[feature_cols]),
-        columns=feature_cols,
-        index=df.index
-    )
+    cols = list(df.columns)
 
-    # Normalize algorithm columns jointly per fid using 1D flattening
-    df_scaled_algos = df[algo_cols].copy()
+    if start_col is None or end_col is None:
+        feature_cols = [
+            c for c in df.columns
+            if c not in index_cols and c not in algo_cols
+        ]
+    else:
+        if start_col not in cols or end_col not in cols:
+            raise ValueError(
+                f"Range {start_col} → {end_col} not found. "
+                f"Columns available: {cols}"
+            )
+        start_idx = cols.index(start_col)
+        end_idx = cols.index(end_col)
+        feature_cols = cols[start_idx:end_idx + 1]
 
-    for _, group in df.groupby(["fid"]):
-        algo_matrix = group[algo_cols].to_numpy()  # shape (num_rows, 6)
-        flat_vals = algo_matrix.flatten().reshape(-1, 1)  # shape (num_rows * 6, 1)
+    df_out = df.copy()
+
+    if len(feature_cols) > 0:
+        feature_scaler = MinMaxScaler()
+        df_out[feature_cols] = feature_scaler.fit_transform(df_out[feature_cols])
+
+    for _, group in df_out.groupby("fid"):
+        idx = group.index
+        algo_matrix = df_out.loc[idx, algo_cols].to_numpy()
+        flat_vals = algo_matrix.flatten().reshape(-1, 1)
 
         scaler = MinMaxScaler(feature_range=(1e-12, 1))
         flat_scaled = scaler.fit_transform(flat_vals).flatten()
+        df_out.loc[idx, algo_cols] = flat_scaled.reshape(algo_matrix.shape)
 
-        # Reshape back and insert
-        scaled_matrix = flat_scaled.reshape(algo_matrix.shape)
-        df_scaled_algos.loc[group.index] = scaled_matrix
+    df_out = df_out.sort_values(by=index_cols).reset_index(drop=True)
 
-    # Combine everything
-    df_final = pd.concat([df[index_cols], df_scaled_features, df_scaled_algos], axis=1)
-    df_final = df_final.sort_values(by=["fid", "iid", "rep"]).reset_index(drop=True)
-    if not os.path.exists(os.path.dirname(path_out)):
-        os.makedirs(os.path.dirname(path_out))
-    df_final.to_csv(path_out, index=False)
+    out_dir = os.path.dirname(path_out)
+    if out_dir and not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    df_out.to_csv(path_out, index=False)
     print(f"Saved normalized file to: {path_out}")
 
-def normalize_and_log_precision_files(precision_path, output_path):
-    df = pd.read_csv(precision_path)
+def normalize_test_ela(
+    train_csv_path,
+    test_csv_path,
+    test_out_path,
+    norm_ranges=None,
+):
+    """
+    Normalize selected ELA features in the test set using a scaler
+    fitted on the training data.
 
-    scaler = MinMaxScaler(feature_range=(1e-12, 1))
+    Parameters
+    ----------
+    train_csv_path : str
+    test_csv_path  : str
+    test_out_path  : str
+    norm_ranges    : list of (start_col, end_col) or None
+        Column ranges (inclusive) that SHOULD be scaled.
+        If None, all non-index columns are scaled (old behaviour).
+    """
 
-    def scale_and_log(group):
-        group = group.copy()
-        # scale in place
-        group["precision"] = scaler.fit_transform(group[["precision"]])
-        # take log 
-        group["precision"] = np.log10(group["precision"])
-        return group
-
-    df = df.groupby("fid", group_keys=False).apply(scale_and_log)
-
-    df.to_csv(output_path, index=False)
-
-def normalize_test_ela(train_csv_path, test_csv_path, test_out_path):
     # Load training and test data
     df_train = pd.read_csv(train_csv_path)
     df_test = pd.read_csv(test_csv_path)
 
-    # Define index columns
+    # Index columns (never scaled)
     index_cols = ["fid", "iid", "rep"]
+    all_cols = df_train.columns.tolist()
 
-    # Identify feature columns (anything that's not an index col)
-    feature_cols = [col for col in df_train.columns if col not in index_cols]
+    # ---------------------------------------
+    # 1) Determine which columns to normalize
+    # ---------------------------------------
+    if norm_ranges is None:
+        # Backwards-compatible behaviour: scale all non-index columns
+        feature_cols = [col for col in df_train.columns if col not in index_cols]
+    else:
+        norm_cols = []
+        for start_col, end_col in norm_ranges:
+            if start_col not in all_cols or end_col not in all_cols:
+                raise ValueError(
+                    f"Column '{start_col}' or '{end_col}' not found in dataframe."
+                )
 
-    # Fit scaler on training data's feature columns
-    feature_scaler = MinMaxScaler()
-    feature_scaler.fit(df_train[feature_cols])
+            start_idx = all_cols.index(start_col)
+            end_idx   = all_cols.index(end_col)
 
-    # Transform test data's feature columns
-    df_scaled_features = pd.DataFrame(
-        feature_scaler.transform(df_test[feature_cols]),
-        columns=feature_cols,
-        index=df_test.index
-    )
+            if end_idx < start_idx:
+                raise ValueError(f"Invalid column range: {start_col} → {end_col}")
 
-    # Reattach index columns and save
-    df_final = pd.concat([df_test[index_cols], df_scaled_features], axis=1)
+            norm_cols.extend(all_cols[start_idx:end_idx + 1])
+
+        # Remove index columns from the normalization set, just in case
+        feature_cols = [c for c in norm_cols if c not in index_cols]
+
+    # ---------------------------------------
+    # 2) Fit scaler on the training data
+    # ---------------------------------------
+    scaler = MinMaxScaler()
+    scaler.fit(df_train[feature_cols])
+
+    # ---------------------------------------
+    # 3) Apply scaler to the test data
+    # ---------------------------------------
+    df_final = df_test.copy()
+    df_final.loc[:, feature_cols] = scaler.transform(df_test[feature_cols])
+
+    # Index cols + all non-normalised feature cols are already in df_final unchanged
+
+    # ---------------------------------------
+    # 4) Sort & save
+    # ---------------------------------------
     df_final = df_final.sort_values(by=["fid", "iid", "rep"]).reset_index(drop=True)
 
-    if not os.path.exists(os.path.dirname(test_out_path)):
-        os.makedirs(os.path.dirname(test_out_path))
-    df_final.to_csv(test_out_path, index=False)
+    out_dir = os.path.dirname(test_out_path)
+    if out_dir and not os.path.exists(out_dir):
+        os.makedirs(out_dir)
 
+    df_final.to_csv(test_out_path, index=False)
     print(f"Saved normalized test file to: {test_out_path}")
 
 def add_current_best(df: pd.DataFrame, gen_size: int = 8):
@@ -305,29 +351,93 @@ def add_current_best(df: pd.DataFrame, gen_size: int = 8):
     # Apply per unique run
     return df.groupby(["fid", "iid", "rep"], group_keys=False).apply(process_one_run)
 
-if __name__ == "__main__":
-    base_data_path = "../data/run_data_5D/A2_data_5D_test"
-    # Ignore future warnings for cleaner output
-    warnings.filterwarnings("ignore", category=FutureWarning)
-    # normalize_and_log_precision_files("A2_precisions.csv", "A2_precisions_normalized_log10.csv")
-    # process_ioh_data(base_data_path)
-    # add_algorithm_precisions(
-    #     ela_dir="../data/ela_with_cma_std/A1_data_5D",
-    #     precision_csv="A2_precisions.csv",
-    #     output_dir="../data/ela_with_precisions/A1_data_5D"
-    # 
+def normalize_ela_with_precisions_fid_scaling(path_in, path_out):
+    df = pd.read_csv(path_in)
 
+    # 1) Index-like columns (left untouched)
+    index_cols = ["fid", "iid", "rep", "high_level_category"]
+
+    # 2) Algorithm performance columns (per-fid scaling, kept as before)
+    algo_cols = ["BFGS", "DE", "Elitist", "MLSL", "Non-elitist", "PSO"]
+
+    cols = df.columns.tolist()
+
+    # 3) Global ELA features: from 'ela_distr.skewness' to 'nbc.nb_fitness.cor'
+    global_start = cols.index("ela_distr.skewness")
+    global_end = cols.index("nbc.nb_fitness.cor")
+    global_feature_cols = cols[global_start:global_end + 1]
+
+    # 4) Remaining feature columns (state / run features):
+    # everything that is not index, not algo, and not global ELA
+    per_fid_feature_cols = [
+        c for c in cols
+        if c not in index_cols + algo_cols + global_feature_cols
+    ]
+
+    # ---- 1. Global min-max scaling for global_feature_cols ----
+    global_scaler = MinMaxScaler()
+    df_global_scaled = pd.DataFrame(
+        global_scaler.fit_transform(df[global_feature_cols]),
+        columns=global_feature_cols,
+        index=df.index
+    )
+
+    # ---- 2. Per-fid min-max scaling for remaining feature columns ----
+    if per_fid_feature_cols:
+        df_state_scaled = df[per_fid_feature_cols].copy()
+
+        for fid, group in df.groupby("fid"):
+            scaler = MinMaxScaler()
+            scaled_vals = scaler.fit_transform(group[per_fid_feature_cols])
+            df_state_scaled.loc[group.index, :] = scaled_vals
+    else:
+        df_state_scaled = df[per_fid_feature_cols].copy()  # empty, but keeps structure
+
+    # ---- 3. Algo columns: per-fid scaling with flattening (unchanged) ----
+    df_scaled_algos = df[algo_cols].copy()
+
+    for fid, group in df.groupby("fid"):
+        algo_matrix = group[algo_cols].to_numpy()
+        flat_vals = algo_matrix.flatten().reshape(-1, 1)
+
+        scaler = MinMaxScaler(feature_range=(1e-12, 1))
+        flat_scaled = scaler.fit_transform(flat_vals).flatten()
+
+        scaled_matrix = flat_scaled.reshape(algo_matrix.shape)
+        df_scaled_algos.loc[group.index] = scaled_matrix
+
+    # ---- 4. Combine everything ----
+    df_final = df.copy()
+    df_final[global_feature_cols] = df_global_scaled
+    if per_fid_feature_cols:
+        df_final[per_fid_feature_cols] = df_state_scaled
+    df_final[algo_cols] = df_scaled_algos
+
+    df_final = df_final.sort_values(by=["fid", "iid", "rep"]).reset_index(drop=True)
+
+    out_dir = os.path.dirname(path_out)
+    if out_dir and not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    df_final.to_csv(path_out, index=False)
+    print(f"Saved normalized file to: {path_out}")
+
+if __name__ == "__main__":
     budgets = [8*i for i in range(1, 13)] + [50*i for i in range(2, 21)]
 
-    # for budget in budgets:
-    #     normalize_test_ela(
-    #         train_csv_path=f"../data/ela_with_cma_std/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv",
-    #         test_csv_path=f"../data/ela_with_cma_std/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv",
-    #         test_out_path=f"../data/ela_normalised/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv"
-    #     )
-    for budget in budgets:
-        add_current_best(
-            pd.read_csv(f"../data/run_data_5D/A1_data_5D/A1_B{budget}_5D.csv"),
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
 
-        ).to_csv(f"../data/run_data_5D/A1_data_5D/A1_B{budget}_5D_with_current_best.csv", index=False)
-        print(f"Added current best to A1_B{budget}_5D.csv")
+        for budget in budgets:
+            # normalize_ela_with_precisions(
+            #     path_in=f"../data/ela_with_precisions/A1_data_5D_gradient/A1_B{budget}_5D_ela_with_state.csv",
+            #     path_out=f"../data/ela_nomalized_with_precisions/A1_data_5D_gradient_normalized_partial/A1_B{budget}_5D_ela_with_statew.csv",
+            #     start_col="ela_distr.skewness",
+            #     end_col="nbc.nb_fitness.cor"
+            # )
+            normalize_test_ela(
+                train_csv_path=f"../data/ela_with_cma_std/A1_data_5D_gradient/A1_B{budget}_5D_ela_with_state.csv",
+                test_csv_path=f"../data/ela_with_cma_std/A1_data_5D_test_gradient/A1_B{budget}_5D_ela_with_state.csv",
+                test_out_path=f"../data/ela_normalised/A1_data_5D_test_gradient_partial/A1_B{budget}_5D_ela_with_state.csv",
+                norm_ranges=[("ela_distr.skewness", "nbc.nb_fitness.cor")]
+            )
