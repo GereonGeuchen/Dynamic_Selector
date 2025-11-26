@@ -1,4 +1,0 @@
-Loading pipeline: algo_performance_models/model_B32.pkl and data: ../data/ela_algo/A1_data_5D/A1_B32_5D_ela_with_state.csv
-Target columns: ['BFGS', 'DE', 'MLSL', 'Non-elitist', 'PSO', 'Elitist']
-Trained selector on 2400 rows
-Saved trained selector to: ../data/trained_models/algo_performance_models_trained/selector_B32_trained.pkl

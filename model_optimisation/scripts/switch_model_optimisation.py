@@ -15,7 +15,7 @@ from smac import HyperparameterOptimizationFacade, Scenario
 from asf.predictors import RandomForestClassifierWrapper
 
 # === Your switching budgets ===
-SWITCHING_BUDGETS = [8*i for i in range(1, 13)] + [50*i for i in range(2, 20)]
+SWITCHING_BUDGETS = [50*i for i in range(1, 20)]
 
 # === Your instance IDs for evaluation ===
 FIDS = list(range(1, 25))
@@ -26,13 +26,13 @@ REPS = list(range(20))
 
 # === Paths ===
 
-ELA_DIR_SWITCH = "../data/ela_with_switch_budget/A1_data_5D_highest"
-ELA_DIR_ALGO = "../data/ela_algo/A1_data_5D"
-PRECISION_FILE = "../data/A2_precisions_normalized_log10.csv"
-CV_MODELS_DIR = "../data/models/trained_models/algo_performance_models_cv_highest"
-UNTRAINED_PERF_MODELS_DIR = "../data/models/untrained_models/algo_performance_models"
-SMAC_OUTPUT_DIR = "smac_output_switch_optimisation_highest"
-OUTPUT_PATH = "../data/models/tuned_models/switching_models_highest"
+ELA_DIR_SWITCH = "../data/ela_with_switch_budget/A1_data_5D_per_run_gradient_normalized_partial_highest"
+ELA_DIR_ALGO = "../data/ela_algo/A1_data_5D_gradient_normalized_partial"
+PRECISION_FILE = "../data/A2_precisions_50_normalized_log10.csv"
+CV_MODELS_DIR = "../data/models/trained_models/algo_performance_models_cv_gradient_normalized_partial_highest"
+UNTRAINED_PERF_MODELS_DIR = "../data/models/untrained_models/algo_performance_models_gradient_normalized_partial"
+SMAC_OUTPUT_DIR = "smac_output_switch_optimisation_gradient_normalized_partial_highest"
+OUTPUT_PATH = "../data/models/tuned_models/switching_models_gradient_normalized_partial_highest"
 
 
 # ========== Helper classes ==========
@@ -156,7 +156,7 @@ def main():
 
     scenario = Scenario(
         configspace=cs,
-        n_trials=200,
+        n_trials=100,
         walltime_limit=np.inf,
         deterministic=True,
         output_directory=SMAC_OUTPUT_DIR,

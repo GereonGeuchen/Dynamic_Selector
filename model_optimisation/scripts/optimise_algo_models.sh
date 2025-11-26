@@ -13,22 +13,21 @@ PY_SCRIPT="optimisation_slurm_selection_models.py"
 mkdir -p "$WORKDIR/logs"
 
 # # First sequence: 8 * [1..12]
-for i in $(seq 1 12); do
-  BUDGETS+=($((8 * i)))
-done
+# for i in $(seq 1 12); do
+#   BUDGETS+=($((8 * i)))
+# done
 
 # # Second sequence: 50 * [1..20]
-for i in $(seq 2 19); do
+for i in $(seq 1 19); do
   BUDGETS+=($((50 * i)))
 done
-
 for BUDGET in "${BUDGETS[@]}"; do
   sbatch <<EOF
 #!/bin/bash
 #SBATCH -A thes2015
-#SBATCH --job-name=${BUDGET}_training
-#SBATCH --output=${WORKDIR}/logs/${BUDGET}_training.out
-#SBATCH --error=${WORKDIR}/logs/${BUDGET}_training.err
+#SBATCH --job-name=${BUDGET}_tuning_gradient
+#SBATCH --output=${WORKDIR}/logs/${BUDGET}_tuning_gradient.out
+#SBATCH --error=${WORKDIR}/logs/${BUDGET}_tuning_gradient.err
 #SBATCH --time=10:00:00
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=1
