@@ -24,10 +24,9 @@ done
 for BUDGET in "${BUDGETS[@]}"; do
   sbatch <<EOF
 #!/bin/bash
-#SBATCH -A thes2015
-#SBATCH --job-name=${BUDGET}_tuning_gradient
-#SBATCH --output=${WORKDIR}/logs/${BUDGET}_tuning_gradient.out
-#SBATCH --error=${WORKDIR}/logs/${BUDGET}_tuning_gradient.err
+#SBATCH --job-name=${BUDGET}_training_just_ela_2
+#SBATCH --output=${WORKDIR}/logs/${BUDGET}_training_just_ela_2.out
+#SBATCH --error=${WORKDIR}/logs/${BUDGET}_training_just_ela_2.err
 #SBATCH --time=10:00:00
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=1

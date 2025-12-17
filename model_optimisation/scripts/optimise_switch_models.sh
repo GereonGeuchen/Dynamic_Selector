@@ -10,10 +10,9 @@ WORKDIR="$HOME/Dokumente/Dynamic_Selector/model_optimisation/scripts"
 PY_SCRIPT="switch_model_optimisation.py"
 sbatch <<EOF
 #!/bin/bash
-#SBATCH -A thes2015
-#SBATCH --job-name=${BUDGET}_gradient_normalized_partial_highest
-#SBATCH --output=${WORKDIR}/logs/${BUDGET}_gradient_normalized_partial_highest.out
-#SBATCH --error=${WORKDIR}/logs/${BUDGET}_gradient_normalized_partial_highest.err
+#SBATCH --job-name=switch_optimisation_algo_features_variance
+#SBATCH --output=${WORKDIR}/logs/switch_optimisation_algo_features_variance.out
+#SBATCH --error=${WORKDIR}/logs/switch_optimisation_algo_features_variance.err
 #SBATCH --time=24:00:00
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=5

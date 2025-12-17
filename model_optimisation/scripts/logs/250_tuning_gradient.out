@@ -1,4 +1,0 @@
-Loading pipeline: ../data/models/untrained_models/algo_performance_models_gradient_normalized_partial/model_B250.pkl and data: ../data/ela_algo/A1_data_5D_gradient_normalized_partial/A1_B250_5D_ela_with_state.csv
-Target columns: ['BFGS', 'DE', 'Elitist', 'MLSL', 'Non-elitist', 'PSO']
-Trained selector on 2400 rows
-Saved trained selector to: ../data/models/trained_models/algo_performance_models_trained_gradient_normalized_partial/selector_B250_trained.pkl

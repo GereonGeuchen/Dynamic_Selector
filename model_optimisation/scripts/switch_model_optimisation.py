@@ -26,13 +26,13 @@ REPS = list(range(20))
 
 # === Paths ===
 
-ELA_DIR_SWITCH = "../data/ela_with_switch_budget/A1_data_5D_per_run_gradient_normalized_partial_highest"
-ELA_DIR_ALGO = "../data/ela_algo/A1_data_5D_gradient_normalized_partial"
-PRECISION_FILE = "../data/A2_precisions_50_normalized_log10.csv"
-CV_MODELS_DIR = "../data/models/trained_models/algo_performance_models_cv_gradient_normalized_partial_highest"
-UNTRAINED_PERF_MODELS_DIR = "../data/models/untrained_models/algo_performance_models_gradient_normalized_partial"
-SMAC_OUTPUT_DIR = "smac_output_switch_optimisation_gradient_normalized_partial_highest"
-OUTPUT_PATH = "../data/models/tuned_models/switching_models_gradient_normalized_partial_highest"
+ELA_DIR_SWITCH = "../data/A1_data_algo_features_variance_switch"
+ELA_DIR_ALGO = "../data/A1_data_ela_normalized_with_precisions"
+PRECISION_FILE = "../data/A2_precisions_normalized_log10.csv"
+CV_MODELS_DIR = "../data/models/trained_models/algo_performance_models_cv_algo_features_variance"
+UNTRAINED_PERF_MODELS_DIR = "../data/models/untrained_models/algo_performance_models_algo_features"
+SMAC_OUTPUT_DIR = "smac_output_switch_optimisation_algo_features_variance"
+OUTPUT_PATH = "../data/models/tuned_models/switching_models_algo_features_variance"
 
 
 # ========== Helper classes ==========
@@ -44,27 +44,39 @@ class SwitchingSelectorCV:
     def simulate_single_run(self, fid, iid, rep, switching_models, performance_models):
 
         for budget in SWITCHING_BUDGETS:
+
             switch_model = switching_models.get(budget)
             perf_model = performance_models.get(budget)
             if switch_model is None or perf_model is None:
+                print("No model available for this budget, skipping.")
                 continue
 
-            ela_path = Path(ELA_DIR_ALGO) / f"A1_B{budget}_5D_ela_with_state.csv"
-            if not ela_path.exists():
+            ela_path_algo = Path(ELA_DIR_ALGO) / f"A1_B{budget}_5D_ela.csv"
+            ela_path_switch = Path(ELA_DIR_SWITCH) / f"A1_B{budget}_5D_ela.csv"
+
+            if not ela_path_algo.exists() or not ela_path_switch.exists():
+                print("ELA file missing for this budget, skipping.")
+                continue
+                
+            df_algo = pd.read_csv(ela_path_algo)
+            df_switch = pd.read_csv(ela_path_switch).drop(columns=["switch"])
+            df_algo = df_algo.iloc[:, :-6]
+            row_algo = df_algo[(df_algo["fid"] == fid) & (df_algo["iid"] == iid) & (df_algo["rep"] == rep)]
+            row_switch = df_switch[(df_switch["fid"] == fid) & (df_switch["iid"] == iid) & (df_switch["rep"] == rep)]
+            if row_algo.empty or row_switch.empty:
+                print("No data row found for this configuration, skipping.")
                 continue
 
-            df = pd.read_csv(ela_path)
-            df = df.iloc[:, :-6]
-            row = df[(df["fid"] == fid) & (df["iid"] == iid) & (df["rep"] == rep)]
-            if row.empty:
-                continue
+            features_switch = row_switch.iloc[:, 4:]
+            features_switch.index = [(fid, iid, rep)]
+            should_switch = switch_model.predict(features_switch)[0]
 
-            features = row.iloc[:, 4:]
-            features.index = [(fid, iid, rep)]
-            should_switch = switch_model.predict(features)[0]
 
             if should_switch:
-                algo_prediction = perf_model.predict(features)
+                print(f"Switching at budget {budget} for fid={fid}, iid={iid}, rep={rep}")
+                features_algo = row_algo.iloc[:, 4:]
+                features_algo.index = [(fid, iid, rep)]
+                algo_prediction = perf_model.predict(features_algo)
                 predicted_algorithm = list(algo_prediction.values())[0][0][0]
 
                 match_row = self.precision_df[
@@ -96,11 +108,11 @@ def train_models_for_iid(test_iid, config, selector):
     performance_models = {}
 
     for budget in SWITCHING_BUDGETS:
-        ela_path_switch = Path(ELA_DIR_SWITCH) / f"A1_B{budget}_5D_ela_with_state.csv"
+        ela_path_switch = Path(ELA_DIR_SWITCH) / f"A1_B{budget}_5D_ela.csv"
         if not ela_path_switch.exists():
             continue
         train_df = pd.read_csv(ela_path_switch)
-        train_df = train_df.drop(columns=["Elitist", "Non-elitist", "MLSL", "PSO", "DE", "BFGS"])
+        # train_df = train_df.drop(columns=["Elitist", "Non-elitist", "MLSL", "PSO", "DE", "BFGS"])
         train_df = train_df[train_df["iid"].isin(train_iids)]
 
         model = wrapper_partial()
@@ -109,7 +121,7 @@ def train_models_for_iid(test_iid, config, selector):
         model.fit(X_train, y_train)
         switching_models[budget] = model
 
-        ela_path_algo = Path(ELA_DIR_ALGO) / f"A1_B{budget}_5D_ela_with_state.csv"
+        ela_path_algo = Path(ELA_DIR_ALGO) / f"A1_B{budget}_5D_ela.csv"
         if not ela_path_algo.exists():
             continue
         train_df = pd.read_csv(ela_path_algo)
@@ -121,6 +133,7 @@ def train_models_for_iid(test_iid, config, selector):
         if trained_model_path.exists():
             perf_model = joblib.load(trained_model_path)
         else:
+            print(f"Training performance model for budget {budget}, iid {test_iid}")
             perf_model = joblib.load(f"{UNTRAINED_PERF_MODELS_DIR}/model_B{budget}.pkl").selector
             perf_model.fit(X_train, y_train)
             os.makedirs(os.path.dirname(trained_model_path), exist_ok=True)
@@ -175,11 +188,11 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for budget in SWITCHING_BUDGETS:
-        ela_path_switch = Path(ELA_DIR_SWITCH) / f"A1_B{budget}_5D_ela_with_state.csv"
+        ela_path_switch = Path(ELA_DIR_SWITCH) / f"A1_B{budget}_5D_ela.csv"
         if not ela_path_switch.exists():
             continue
         train_df = pd.read_csv(ela_path_switch)
-        train_df = train_df.drop(columns=["Elitist", "Non-elitist", "MLSL", "PSO", "DE", "BFGS"])
+        # train_df = train_df.drop(columns=["Elitist", "Non-elitist", "MLSL", "PSO", "DE", "BFGS"])
         X_train = train_df.iloc[:, 4:].drop(columns=["switch"])
         y_train = train_df["switch"]
         model = wrapper_partial()

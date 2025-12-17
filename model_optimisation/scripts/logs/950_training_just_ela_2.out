@@ -1,0 +1,4 @@
+Loading pipeline: ../data/models/untrained_models/algo_performance_models_algo_features/model_B950.pkl and data: ../data/A1_data_ela_normalized_with_precisions/A1_B950_5D_ela.csv
+Target columns: ['BFGS', 'DE', 'Elitist', 'MLSL', 'Non-elitist', 'PSO']
+Trained selector on 2400 rows
+Saved trained selector to: ../data/models/trained_models/algo_performance_models_trained_algo_features/selector_B950_trained.pkl

@@ -5,9 +5,9 @@ import joblib
 from asf.selectors import PerformanceModel, tune_selector
 
 def tune_performance_model(budget: int):
-    data = pd.read_csv(f"../data/ela_algo/A1_data_5D_gradient_normalized_partial/A1_B{budget}_5D_ela_with_state.csv")
+    data = pd.read_csv(f"../data/A1_data_ela_normalized_with_precisions/A1_B{budget}_5D_ela.csv")
     # precision_data = pd.read_csv(f"../data/split_precision_csvs/precision_budget_{budget}.csv")
-    print(f"Using file: ../data/ela_algo/A1_data_5D_gradient_normalized_partial/A1_B{budget}_5D_ela_with_state.csv")
+    print(f"Using file: ../data/A1_data_ela_normalized_with_precisions/A1_B{budget}_5D_ela.csv")
     features = data.iloc[:, 4:-6]
     targets = data.iloc[:, -6:]
     groups = data["iid"]
@@ -23,11 +23,11 @@ def tune_performance_model(budget: int):
         cv=5,
         runcount_limit=100,
         seed=42,
-        output_dir=f"./smac_output_performance_gradient_normalized_partial/B{budget}_performance",
+        output_dir=f"./smac_output_performance_no_state_2/B{budget}_performance",
         predict_log=True
     )
-    os.makedirs("algo_performance_models_gradient_normalized_partial", exist_ok=True)
-    joblib.dump(pipeline, f"algo_performance_models_gradient_normalized_partial/model_B{budget}.pkl")
+    os.makedirs("algo_performance_models_no_state_2", exist_ok=True)
+    joblib.dump(pipeline, f"algo_performance_models_no_state_2/model_B{budget}.pkl")
     
 def tune_switching_model(budget: int):
     if budget < 100 and budget != 50:
@@ -63,9 +63,9 @@ def tune_switching_model(budget: int):
 # Loads a configured, untrained selection model, trains it and saves the trained model
 def train_and_save_selector_only(budget: int):
 
-    input_path = f"../data/models/untrained_models/algo_performance_models_gradient_normalized_partial/model_B{budget}.pkl"
-    data_path = f"../data/ela_algo/A1_data_5D_gradient_normalized_partial/A1_B{budget}_5D_ela_with_state.csv"
-    save_path = f"../data/models/trained_models/algo_performance_models_trained_gradient_normalized_partial/selector_B{budget}_trained.pkl"
+    input_path = f"../data/models/untrained_models/algo_performance_models_algo_features/model_B{budget}.pkl"
+    data_path = f"../data/A1_data_ela_normalized_with_precisions/A1_B{budget}_5D_ela.csv"
+    save_path = f"../data/models/trained_models/algo_performance_models_trained_algo_features/selector_B{budget}_trained.pkl"
     y_cols = -6
 
     print(f"Loading pipeline: {input_path} and data: {data_path}")
