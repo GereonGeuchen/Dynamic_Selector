@@ -1,6 +1,8 @@
 import pandas as pd
 import os
 import numpy as np
+import glob
+import re
 
 # Given the perforamce data of the selection models, we determine the best selector (and corresponding budget) for each fid
 def compute_best_budgets(input_csv):
@@ -143,31 +145,79 @@ def mark_switch_budget_and_greater_budgets_per_run(
         out_path = os.path.join(output_dir, file)
         df.to_csv(out_path, index=False)
 
+def update_algo_columns(predictions_csv: str, a1_folder: str, output_folder: str):
+
+    algo_cols = ["BFGS", "DE", "Elitist", "MLSL", "Non-elitist", "PSO"]
+    variance_cols = ["var_" + col for col in algo_cols]
+
+    # Load predictions
+    preds = pd.read_csv(predictions_csv)
+
+    # Check required columns
+    required_cols = ["fid", "iid", "rep", "budget"] + algo_cols
+    missing = [c for c in required_cols if c not in preds.columns]
+    if missing:
+        raise ValueError(f"Missing columns in predictions file: {missing}")
+
+    # Create output folder if needed
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Iterate over all A1 files
+    files = glob.glob(os.path.join(a1_folder, "A1_B*_5D_ela.csv"))
+    for path in files:
+        print(f"Processing {path} ...")
+
+        # Extract budget from filename (e.g., A1_B50_5D.csv → 50)
+        m = re.search(r"_B(\d+)_", os.path.basename(path))
+        if not m:
+            print(f"Could not extract budget from filename {path}, skipping.")
+            continue
+        budget = int(m.group(1))
+
+        # Load this A1 file
+        df = pd.read_csv(path)
+
+        # Filter predictions for this budget
+        preds_b = preds[preds["budget"] == budget][["fid", "iid", "rep"] + algo_cols + variance_cols]
+
+        # Remove old algo columns
+        df_clean = df.drop(columns=[c for c in algo_cols if c in df.columns])
+
+        # Merge in the new predictions
+        merged = df_clean.merge(preds_b, on=["fid", "iid", "rep"], how="left")
+
+        # Warning if something mismatches
+        if merged[algo_cols].isna().any().any():
+            bad_rows = merged[merged[algo_cols].isna().any(axis=1)][["fid", "iid", "rep"]].drop_duplicates()
+            print(f"⚠ WARNING: Missing predictions for some rows:\n{bad_rows}")
+
+        # Save in output folder under same filename
+        out_path = os.path.join(output_folder, os.path.basename(path))
+        merged.to_csv(out_path, index=False)
+        print(f"✔ Wrote updated file to {out_path}")
+
+    print("🎉 All updated files written to:", output_folder)
+
+
 if __name__ == "__main__":
-    # ela_with_state_dir = "../data/ela_normalized_with_precisions/A1_data_5D"
-    # best_budgets_csv = "../data/selector_performances/best_budgets.csv"
-    # output_dir = "../data/ela_with_switch_budget/A1_data_5D_highest"
-
-    # make_run_specific_best_budgets(
-    #     input_csv="../data/selector_performances/gradient_normalized_partial/predicted_static_precisions.csv",
-    #     output_csv="../data/selector_performances/gradient_normalized_partial/run_specific_best_budgets_highest.csv",
-    #     tie_break="highest"
-    # )
-
-    # compute_best_budgets(
-    #     "../data/selector_performances/predicted_static_precisions_rep_fold_all_sp.csv"
-    # ).to_csv(best_budgets_csv, index=False)
-
-    # mark_switch_budget_and_greater_budgets(
-    #     ela_with_state_dir,
-    #     best_budgets_csv,
-    #     output_dir,
-    #     min=False
-    # )
-    # make_run_specific_best_budgets("../data/selector_performances/predicted_static_precisions_all_sp.csv",
-    #                                "../data/selector_performances/run_specific_best_budgets_all_sp_highest.csv", tie_break="highest")
+    # make_run_specific_best_budgets("../data/selector_performances/no_state_variance/predicted_static_precisions.csv",
+    #                                "../data/selector_performances/no_state_variance/best_budgets_per_run.csv", tie_break="highest")
+    
     mark_switch_budget_and_greater_budgets_per_run(
-        ela_with_state_dir="../data/ela_normalized_with_precisions/A1_data_5D_gradient_normalized_partial",
-        best_budgets_csv="../data/selector_performances/gradient_normalized_partial/run_specific_best_budgets_highest.csv",
-        output_dir="../data/ela_with_switch_budget/A1_data_5D_per_run_gradient_normalized_partial_highest"
+        ela_with_state_dir="../data/ela/A1_data_ela_with_algo_features",
+        best_budgets_csv="../data/selector_performances/algo_features/best_budgets_per_run.csv",
+        output_dir="../data/switch_data/A1_data_algo_features_switch_2"
     )
+
+    # update_algo_columns(
+    #     predictions_csv="../data/selector_performances/no_state_variance/all_normalized_predictions.csv",
+    #     a1_folder="../data/ela/A1_data_ela_normalized_with_precisions",
+    #     output_folder="../data/ela/A1_data_ela_with_algo_features_variance"
+    # )
+
+
+    # df1 = pd.read_csv("../data/selector_performances/algo_features_variance/best_budgets_per_run.csv")
+    # df2 = pd.read_csv("../data/selector_performances/algo_features/best_budgets_per_run.csv")
+
+    # # Check if best_budgets columns are identical
+    # print(f"Are best budgets identical? {df1['best_budget'].equals(df2['best_budget'])}")
