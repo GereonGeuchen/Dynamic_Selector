@@ -29,7 +29,6 @@ for BUDGET in "${BUDGETS[@]}"; do
 
   sbatch <<EOF
 #!/bin/bash
-#SBATCH -A thes2015
 #SBATCH --job-name=ela_B${BUDGET}
 #SBATCH --output=${WORKDIR}/logs/ela_B${BUDGET}.out
 #SBATCH --error=${WORKDIR}/logs/ela_B${BUDGET}.err

@@ -96,6 +96,8 @@ def extract_a2_precisions(base_dir, output_file="A2_precisions.csv", algorithms=
 
     for algo in algorithms:
         for budget in budgets:
+            if budget != 56:
+                if budget % 50 != 0: continue
             folder_name = os.path.join(base_dir, f"A2_{algo}_B{budget}_5D")
             if not os.path.isdir(folder_name):
                 continue
@@ -146,7 +148,7 @@ def extract_a2_precisions(base_dir, output_file="A2_precisions.csv", algorithms=
                             "fid": fid,
                             "iid": int(iid),
                             "rep": int(rep),
-                            "budget": budget,
+                            "budget": 50 if budget == 56 else budget,
                             "algorithm": algo,
                             "precision": filtered_precision,
                         })
@@ -180,7 +182,6 @@ def add_algorithm_precisions(ela_dir, precision_csv, output_dir):
 
         # Extract budget from filename
         budget = int(file.split('_')[1][1:])  
-        if budget == 50: continue
         ela_df['budget'] = budget
 
         # Merge on fid, iid, rep, budget
@@ -276,7 +277,7 @@ def normalize_test_ela(
     df_test = pd.read_csv(test_csv_path)
 
     # Index columns (never scaled)
-    index_cols = ["fid", "iid", "rep"]
+    index_cols = ["fid", "iid", "rep", "high_level_category"]
     all_cols = df_train.columns.tolist()
 
     # ---------------------------------------
@@ -314,7 +315,8 @@ def normalize_test_ela(
     # 3) Apply scaler to the test data
     # ---------------------------------------
     df_final = df_test.copy()
-    df_final.loc[:, feature_cols] = scaler.transform(df_test[feature_cols])
+    df_final[feature_cols] = scaler.transform(df_test[feature_cols])
+    df_final[feature_cols] = df_final[feature_cols].astype(float)
 
     # Index cols + all non-normalised feature cols are already in df_final unchanged
 
@@ -422,22 +424,89 @@ def normalize_ela_with_precisions_fid_scaling(path_in, path_out):
     df_final.to_csv(path_out, index=False)
     print(f"Saved normalized file to: {path_out}")
 
+def normalize_precision_per_fid(df, col="precision", min_scale=1e-12, max_scale=1.0):
+    df = df.copy()
+
+    def scale_group(g):
+        x = g[[col]].values  # 2D shape for sklearn
+
+        if np.all(x == x[0]):  
+            # Constant precision -> assign midpoint
+            midpoint = (min_scale + max_scale) / 2
+            g[col] = midpoint
+        else:
+            scaler = MinMaxScaler(feature_range=(min_scale, max_scale))
+            g[col] = scaler.fit_transform(x)
+
+        return g
+
+    df = df.groupby("fid", group_keys=False).apply(scale_group)
+    return df
+
+# Simple min-max normalisation of just ELA columns
+def minmax_normalize_ela_columns(
+    df: pd.DataFrame,
+    feature_range=(0.0, 1.0),
+    n_prefix_cols: int = 4,
+    n_suffix_cols: int = 6,
+) -> pd.DataFrame:
+    df = df.copy()
+
+    # Split columns
+    cols = df.columns.tolist()
+    # prefix_cols = cols[:n_prefix_cols]
+    # suffix_cols = cols[-n_suffix_cols:] if n_suffix_cols > 0 else []
+    mid_cols = cols[n_prefix_cols:len(cols) - n_suffix_cols]
+
+    # Apply MinMaxScaler to middle columns
+    scaler = MinMaxScaler(feature_range=feature_range)
+    df[mid_cols] = scaler.fit_transform(df[mid_cols])
+
+    return df
+
 if __name__ == "__main__":
-    budgets = [8*i for i in range(1, 13)] + [50*i for i in range(2, 21)]
+    # budgets = [50*i for i in range(1, 21)]
+    
+    # for budget in budgets:
+    #     df = pd.read_csv(f"../data/ela/A1_data_ela_2/A1_B{budget}_5D_ela.csv")
+    #     df_norm = minmax_normalize_ela_columns(df)
+    #     df_norm.to_csv(f"../data/ela_normalized/A1_B{budget}_5D_ela.csv", index=False)    
+    # with warnings.catch_warnings():
+    #     warnings.simplefilter("ignore")
+    #     extract_a2_precisions(
+    #         base_dir="../data/run_data_5D/A2_data_5D",
+    #         output_file="../data/A2_precisions_2.csv",
+    #         max_evals=1000
+    #     )
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    # normalize_precision_per_fid(
+    #     df = pd.read_csv("../data/A2_precisions_2.csv")
+    # ).to_csv("../data/A2_precisions_2_normalized.csv", index=False)
 
-        for budget in budgets:
-            # normalize_ela_with_precisions(
-            #     path_in=f"../data/ela_with_precisions/A1_data_5D_gradient/A1_B{budget}_5D_ela_with_state.csv",
-            #     path_out=f"../data/ela_nomalized_with_precisions/A1_data_5D_gradient_normalized_partial/A1_B{budget}_5D_ela_with_statew.csv",
-            #     start_col="ela_distr.skewness",
-            #     end_col="nbc.nb_fitness.cor"
-            # )
-            normalize_test_ela(
-                train_csv_path=f"../data/ela_with_cma_std/A1_data_5D_gradient/A1_B{budget}_5D_ela_with_state.csv",
-                test_csv_path=f"../data/ela_with_cma_std/A1_data_5D_test_gradient/A1_B{budget}_5D_ela_with_state.csv",
-                test_out_path=f"../data/ela_normalised/A1_data_5D_test_gradient_partial/A1_B{budget}_5D_ela_with_state.csv",
-                norm_ranges=[("ela_distr.skewness", "nbc.nb_fitness.cor")]
-            )
+    # add_algorithm_precisions(
+    #     ela_dir="../data/ela/A1_data_ela_2_normalized",
+    #     precision_csv="../data/A2_precisions_2_normalized.csv",
+    #     output_dir="../data/ela/A1_data_ela_2_with_precisions"
+    # )
+
+    # df = pd.read_csv("../data/A2_precisions_normalized.csv")
+
+    # # Apply log10 to precisions column
+    # df["precision"] = df["precision"].apply(lambda x: np.log10(x))
+
+    # df.to_csv("../data/A2_precisions_normalized_log10.csv", index=False)
+    # with warnings.catch_warnings():
+    #     warnings.simplefilter("ignore")
+    #     extract_a2_precisions(
+    #         base_dir="../data/run_data_5D/A2_data_5D_test",
+    #         output_file="../data/A2_precisions_test_2.csv",
+    #         max_evals=1000
+    #     )
+    budgets = [8*i for i in range(1, 13) if 8*i != 56] + [50*i for i in range(2, 21)]
+    budgets = [56]
+    for budget in budgets:
+        normalize_test_ela(
+            train_csv_path=f"../data/ela/A1_data_ela/A1_B{budget}_5D_ela.csv",
+            test_csv_path=f"../data/ela/A1_data_ela_test/A1_B{budget}_5D_ela.csv",
+            test_out_path=f"../data/ela/A1_data_ela_test_normalized_2/A1_B{budget}_5D_ela.csv"
+        )

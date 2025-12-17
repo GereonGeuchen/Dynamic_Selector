@@ -21,7 +21,7 @@ from classical_ela_features import ( # type: ignore
 
 def calculate_ela_features(budget):
     base_folder = "../data/run_data_5D/A1_data_5D_test"   
-    output_folder = "../data/raw_ela_data/A1_data_ela_test_gradient"           
+    output_folder = "../data/raw_ela_data/A1_data_ela_test_2"           
 
     os.makedirs(output_folder, exist_ok=True)
     filename = f"A1_B{budget}_5D_with_current_best.csv"
@@ -79,32 +79,32 @@ def calculate_ela_features(budget):
         else:
             features.update(calculate_nbc(X, y))
 
-        # ------------------------------------------------------------------
-        # NEW: best-so-far progression features over intervals of evaluations
-        # ------------------------------------------------------------------
-        next_mult = ((budget + 7) // 8) * 8
-        intervals, labels = make_intervals(next_mult)
+        # # ------------------------------------------------------------------
+        # # NEW: best-so-far progression features over intervals of evaluations
+        # # ------------------------------------------------------------------
+        # next_mult = ((budget + 7) // 8) * 8
+        # intervals, labels = make_intervals(next_mult)
 
-        if intervals:
-            # index by evaluations for quick lookup of current_best
-            eval_indexed = group.set_index("evaluations")
+        # if intervals:
+        #     # index by evaluations for quick lookup of current_best
+        #     eval_indexed = group.set_index("evaluations")
 
-            for (start, end), perc_label in zip(intervals, labels):
-                # ensure both evaluation points exist
-                if start not in eval_indexed.index or end not in eval_indexed.index:
-                    continue
+        #     for (start, end), perc_label in zip(intervals, labels):
+        #         # ensure both evaluation points exist
+        #         if start not in eval_indexed.index or end not in eval_indexed.index:
+        #             continue
 
-                low_bsf = float(eval_indexed.loc[start, "current_best"])
-                high_bsf = float(eval_indexed.loc[end, "current_best"])
-                width = end - start
-                if width <= 0:
-                    continue
+        #         low_bsf = float(eval_indexed.loc[start, "current_best"])
+        #         high_bsf = float(eval_indexed.loc[end, "current_best"])
+        #         width = end - start
+        #         if width <= 0:
+        #             continue
 
-                # (high - low) / (width / 8) = (high - low) * 8 / width
-                gradient = ((high_bsf - low_bsf) * 8.0) / width
+        #         # (high - low) / (width / 8) = (high - low) * 8 / width
+        #         gradient = ((high_bsf - low_bsf) * 8.0) / width
 
-                feat_name = f"bsf-progression_{perc_label}"
-                features[feat_name] = gradient
+        #         feat_name = f"bsf-progression_{perc_label}"
+        #         features[feat_name] = gradient
 
         # Add identifying metadata
         features["fid"] = fid
