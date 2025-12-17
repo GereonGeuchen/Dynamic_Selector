@@ -2,16 +2,20 @@ import joblib
 import pandas as pd
 from pathlib import Path
 import os
+import numpy as np
+import warnings
 
 class SwitchingSelector:
     def __init__(self, selector_model_dir="switching_prediction_models", performance_model_dir="algo_performance_models"):
-    
+       
         self.switching_prediction_models = {}
         self.performance_models = {}
 
         selector_model_dir = Path(selector_model_dir)
         performance_model_dir = Path(performance_model_dir)
-
+        print("Loading models...")
+        print(f"Selector model dir: {selector_model_dir}")
+        print(f"Performance model dir: {performance_model_dir}")
         # Load switching predictor models
         for model_path in selector_model_dir.glob("switching_model_B*_trained.pkl"):
             budget = int(model_path.stem.split("_")[2][1:])  # e.g., selector_model_B500 → 500
@@ -30,7 +34,7 @@ class SwitchingSelector:
 
         precision_df = pd.read_csv(precision_file)
         for budget in budgets:
-            ela_path = Path(ela_dir) / f"A1_B{budget}_5D_ela_with_state.csv"
+            ela_path = Path(ela_dir) / f"A1_B{budget}_5D_ela.csv"
             if not ela_path.exists():
                 print("Ela path does not exist")
                 continue
@@ -47,15 +51,53 @@ class SwitchingSelector:
 
             # Predict switching decision: True or False
             switch_model = self.switching_prediction_models.get(budget)
+            performance_model = self.performance_models.get(budget)
+
+            if performance_model is None:
+                continue
+
+            # First get all algo predictions of the performance model
+            algo_predictions = performance_model.generate_features(features)
+
+            colnames = ["BFGS","DE","Elitist","MLSL","Non-elitist","PSO"]
+
+            algo_df = pd.DataFrame(algo_predictions, index=features.index, columns=colnames)
+
+            # Get variances of predictions
+
+            var_colnames = [f"var_{name}" for name in colnames]
+
+            vars_by_algo = []
+
+            for i in range(6):
+                random_forest = performance_model.regressors[i].model_class
+                random_forest_predictions = []
+
+                for estimator in random_forest.estimators_:
+                    random_forest_predictions.append(
+                        estimator.predict(features).reshape(-1, 1)
+                    )
+
+                var = np.var(np.concatenate(random_forest_predictions, axis=1), axis=1)
+                vars_by_algo.append(var)  
+
+            for i, var in enumerate(vars_by_algo):
+                algo_df[var_colnames[i]] = var
+
+
             if switch_model is None:
                 continue
 
             # New: binary classification
-            prediction = switch_model.predict(features)
+            switching_features = pd.concat([features, algo_df], axis=1)
+
+            print(f"Switching features for budget {budget}: {switching_features}")
+
+            prediction = switch_model.predict(switching_features)
             should_switch = prediction[0] # if hasattr(prediction, "__len__") else prediction
             if should_switch:
+                
                 # Now decide which algorithm to switch to
-                performance_model = self.performance_models.get(budget)
                 if performance_model is None:
                     print(f"No performance model for budget {budget}, skipping...")
                     continue
@@ -133,8 +175,8 @@ class SwitchingSelector:
     precision_file="../data/A2_precisions_test.csv"
     ):
         precision_df = pd.read_csv(precision_file)
-        # budgets = list(range(50, 1001, 50))
-        budgets = [8*i for i in range(1, 13)] + [50*i for i in range(2, 21)]  # Budgets from 50 to 1000 in steps of 50
+        budgets = list(range(50, 1001, 50))
+        # budgets = [8*i for i in range(1, 13)] + [50*i for i in range(2, 21)]  # Budgets from 50 to 1000 in steps of 50
 
         # Ensure output directory exists
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -169,7 +211,7 @@ class SwitchingSelector:
                     for b in budgets:
                         col_name = f"static_B{b}"
                         if b < 1000:
-                            ela_path = Path(ela_dir) / f"A1_B{b}_5D_ela_with_state.csv"
+                            ela_path = Path(ela_dir) / f"A1_B{b}_5D_ela.csv"
                             if not ela_path.exists():
                                 row[col_name] = None
                                 continue
@@ -221,18 +263,20 @@ class SwitchingSelector:
         print(f"Incremental results saved to: {save_path}")
 
 if __name__ == "__main__":
-    selector = SwitchingSelector(
-        selector_model_dir="../data/trained_models/switching_models_highest",
-        performance_model_dir="../data/trained_models/algo_performance_models_trained"
-    )
-    selector.evaluate_selector_to_csv(
-        fids=list(range(1, 25)),
-        iids=[6, 7],
-        reps=list(range(20)),
-        save_path="../results/selector_results_algo_highest.csv",
-        ela_dir="../data/A1_data_5D_test",
-        precision_file="../data/A2_precisions_test.csv"
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        selector = SwitchingSelector(
+            selector_model_dir="../data/trained_models/switching_models_algo_features_variance",
+            performance_model_dir="../data/trained_models/algo_performance_models_trained_algo_features"
+        )
+        selector.evaluate_selector_to_csv(
+            fids=list(range(1, 25)),
+            iids=[6, 7],
+            reps=list(range(20)),
+            save_path="../results/selector_results_with_algo_features_variance.csv",
+            ela_dir="../data/A1_data_ela_test_normalized",
+            precision_file="../data/A2_precisions_test.csv"
+        )
     # tuned_model = joblib.load("../data/models/tuned_models/switching_models_normalized/switching_model_B500_trained.pkl")
     # untuned_model = joblib.load("../data/models/trained_models/switching_normalized/selector_B500_trained.pkl")
     # print(tuned_model.model_class.get_params())

@@ -14,10 +14,9 @@ mkdir -p "$WORKDIR/logs"
 
 sbatch <<EOF
 #!/bin/bash
-#SBATCH -A thes2015
-#SBATCH --job-name=selector_highest
-#SBATCH --output=${WORKDIR}/logs/selector_highest.out
-#SBATCH --error=${WORKDIR}/logs/selector_highest.err
+#SBATCH --job-name=selector_variance
+#SBATCH --output=${WORKDIR}/logs/selector_variance.out
+#SBATCH --error=${WORKDIR}/logs/selector_variance.err
 #SBATCH --time=01:00:00
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=1
