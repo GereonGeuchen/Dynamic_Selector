@@ -5,8 +5,16 @@ import os
 import numpy as np
 import warnings
 
+SELECTOR_MODEL_DIR = "../data/trained_models/switching_models_lookahead"
+PERFORMANCE_MODEL_DIR = "../data/trained_models/algo_performance_models_trained_algo_features"
+SAVE_PATH = "../results/selector_results_with_lookahead.csv"
+ELA_DIR = "../data/A1_data_ela_test_normalized"
+PRECISION_FILE = "../data/A2_precisions_test.csv"
+BUDGETS = list(range(50, 1001, 50))
+LOOKAHEAD_MODELS_DIRECTORY = "../data/trained_models/lookahead_models_trained"
+
 class SwitchingSelector:
-    def __init__(self, selector_model_dir="switching_prediction_models", performance_model_dir="algo_performance_models"):
+    def __init__(self, selector_model_dir=SELECTOR_MODEL_DIR, performance_model_dir=PERFORMANCE_MODEL_DIR, lookahead_models_directory=LOOKAHEAD_MODELS_DIRECTORY):
        
         self.switching_prediction_models = {}
         self.performance_models = {}
@@ -30,7 +38,18 @@ class SwitchingSelector:
             print(f"Loaded performance model for budget {budget}: ")
             print(self.performance_models[budget].regressors[0].model_class.get_params())
 
-    def simulate_single_run(self, fid, iid, rep, ela_dir="../data/ela_with_state_test_data", precision_file="../data/A2_precisions_test.csv", budgets=range(50, 1001, 50)):
+        # Load lookahead models if provided
+        if lookahead_models_directory:
+            lookahead_models_directory = Path(lookahead_models_directory)
+            self.lookahead_models = {}
+            for i in range(1, 4):
+                for model_path in lookahead_models_directory.glob(f"lookahead_model_B*_t{i}_trained.pkl"):
+                    budget = int(model_path.stem.split("_")[2][1:])  # e.g., lookahead_model_B500 → 500
+                    self.lookahead_models[budget, i] = joblib.load(model_path)
+                    print(f"Loaded lookahead model for budget {budget, i}: ")
+                    print(self.lookahead_models[budget, i].model_class.get_params())
+
+    def simulate_single_run(self, fid, iid, rep, ela_dir=ELA_DIR, precision_file=PRECISION_FILE, budgets=BUDGETS):
 
         precision_df = pd.read_csv(precision_file)
         for budget in budgets:
@@ -81,21 +100,31 @@ class SwitchingSelector:
                 var = np.var(np.concatenate(random_forest_predictions, axis=1), axis=1)
                 vars_by_algo.append(var)  
 
-            for i, var in enumerate(vars_by_algo):
-                algo_df[var_colnames[i]] = var
+            # for i, var in enumerate(vars_by_algo):
+            #     algo_df[var_colnames[i]] = var
+
+            # Get predictions from lookahead model if available. For budgets 900, we have t1, t2; for budget 950, t1 only.
+            for i in range(1, 4):
+                if (budget, i) in self.lookahead_models:
+                    lookahead_model_t = self.lookahead_models[(budget, i)]
+                    lookahead_pred_t = lookahead_model_t.predict(features)[0]
+                    algo_df[f"pred_t{i}"] = lookahead_pred_t
 
 
             if switch_model is None:
                 continue
 
-            # New: binary classification
+            # Attach predicted algorithm performances to features for switching decision
             switching_features = pd.concat([features, algo_df], axis=1)
 
             print(f"Switching features for budget {budget}: {switching_features}")
 
-            prediction = switch_model.predict(switching_features)
-            should_switch = prediction[0] # if hasattr(prediction, "__len__") else prediction
+            should_switch = switch_model.predict(switching_features)[0]
+            print(f"Switching prediction probability for budget {budget}: {should_switch}")
+            # should_switch = prediction[0] # if hasattr(prediction, "__len__") else prediction
+
             if should_switch:
+                print(f"Switching at budget {budget} for fid={fid}, iid={iid}, rep={rep}")
                 
                 # Now decide which algorithm to switch to
                 if performance_model is None:
@@ -266,18 +295,15 @@ if __name__ == "__main__":
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         selector = SwitchingSelector(
-            selector_model_dir="../data/trained_models/switching_models_algo_features_variance",
-            performance_model_dir="../data/trained_models/algo_performance_models_trained_algo_features"
+            selector_model_dir=SELECTOR_MODEL_DIR,
+            performance_model_dir=PERFORMANCE_MODEL_DIR,
+            lookahead_models_directory=LOOKAHEAD_MODELS_DIRECTORY,
         )
         selector.evaluate_selector_to_csv(
             fids=list(range(1, 25)),
             iids=[6, 7],
             reps=list(range(20)),
-            save_path="../results/selector_results_with_algo_features_variance.csv",
-            ela_dir="../data/A1_data_ela_test_normalized",
-            precision_file="../data/A2_precisions_test.csv"
+            save_path=SAVE_PATH,
+            ela_dir=ELA_DIR,
+            precision_file=PRECISION_FILE
         )
-    # tuned_model = joblib.load("../data/models/tuned_models/switching_models_normalized/switching_model_B500_trained.pkl")
-    # untuned_model = joblib.load("../data/models/trained_models/switching_normalized/selector_B500_trained.pkl")
-    # print(tuned_model.model_class.get_params())
-    # print(untuned_model.get_params())

@@ -14,10 +14,11 @@ mkdir -p "$WORKDIR/logs"
 
 sbatch <<EOF
 #!/bin/bash
-#SBATCH --job-name=selector_variance
-#SBATCH --output=${WORKDIR}/logs/selector_variance.out
-#SBATCH --error=${WORKDIR}/logs/selector_variance.err
-#SBATCH --time=01:00:00
+#SBATCH -A p0026688
+#SBATCH --job-name=selector_with_lookahead
+#SBATCH --output=${WORKDIR}/logs/selector_with_lookahead.out
+#SBATCH --error=${WORKDIR}/logs/selector_with_lookahead.err
+#SBATCH --time=10:00:00
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=1
 
