@@ -3,11 +3,16 @@ import pandas as pd
 import os
 from functools import reduce
 import numpy as np
+import warnings
+
+SELECTOR_DIR = "../data/models/algo_performance_models_algo_features"
+ELA_TEMPLATE = "../data/ela/A1_data_ela_normalized_with_precisions/A1_B{budget}_5D_ela.csv"
+OUTPUT_DIR = "../data/selector_performances/algo_features"
 
 def crossvalidated_static_predictions(
     budget,
-    selector_dir="../data/models/algo_performance_models_no_state",
-    ela_template="../data/ela/A1_data_ela_normalized_with_precisions/A1_B{budget}_5D_ela.csv",
+    selector_dir=SELECTOR_DIR,
+    ela_template=ELA_TEMPLATE,
     precision_df=None
 ):
     selector_path = os.path.join(selector_dir, f"model_B{budget}.pkl")
@@ -43,6 +48,8 @@ def crossvalidated_static_predictions(
         selector.algorithms = list(y.columns)
         selector.fit(X_train, y_train)
 
+        print(budget, selector.regressors[0].model_class.get_params())
+
         predictions = selector.predict(X_test)
 
         for (fid, iid, rep), [(algo, _)] in predictions.items():
@@ -67,7 +74,7 @@ def crossvalidated_static_predictions(
             })
 
 
-        # === NEW: full normalized predictions (log etc.) ===
+        # === NEW: full normalized predictions (raw values and variance) ===
         preds_raw = selector.generate_features(X_test)  # shape (n_test, n_algorithms)
 
         # Get uncertainties of predictions
@@ -96,17 +103,13 @@ def crossvalidated_static_predictions(
             preds_df[f"var_{algo}"] = vars_by_algo[i]
 
 
-        # Unpack (fid, iid, rep) from test_keys
         fid_list, iid_list, rep_list = zip(*test_keys)
 
-        # Insert metadata columns explicitly at the front
         preds_df.insert(0, "fid", fid_list)
         preds_df.insert(1, "iid", iid_list)
         preds_df.insert(2, "rep", rep_list)
         preds_df.insert(3, "budget", budget)
 
-        # No need to reindex with ["fid","iid","rep","budget"] + selector.algorithms:
-        # we already inserted in the order we want.
         predictions_results.append(preds_df)
 
     preds_full = pd.concat(predictions_results, ignore_index=True)
@@ -121,7 +124,7 @@ def crossvalidated_static_predictions(
 
 
 
-def build_full_crossvalidated_table(precision_path, output_dir = "../data/selector_performances/no_state_variance"):
+def build_full_crossvalidated_table(precision_path, output_dir = OUTPUT_DIR):
     all_dfs = []
     all_algos = []
     all_preds = []
@@ -175,6 +178,8 @@ def build_full_crossvalidated_table(precision_path, output_dir = "../data/select
 
 
 if __name__ == "__main__":
-    build_full_crossvalidated_table(
-        "../data/A2_precisions.csv"
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        build_full_crossvalidated_table(
+            "../data/A2_precisions.csv"
+        )

@@ -3,8 +3,18 @@ import os
 import numpy as np
 import glob
 import re
+from pathlib import Path
+
+"""
+This file is used to create the data for the switching models based on ELA features, 
+algorithm predictions, and predictions of the EPMs.
+"""
+
+
+
 
 # Given the perforamce data of the selection models, we determine the best selector (and corresponding budget) for each fid
+# Used to create the binary data for the switching models
 def compute_best_budgets(input_csv):
     df = pd.read_csv(input_csv)
 
@@ -32,8 +42,7 @@ def compute_best_budgets(input_csv):
 
     return pd.DataFrame(results)
 
-# Creates the data for the switching models, based on features and best budget for each fid
-
+# Creates the data for the switching models, based on features and best budget for each fid, by adding the binary label to the ELA files
 def mark_switch_budget_and_greater_budgets(
     ela_with_state_dir,
     best_budgets_csv,
@@ -69,10 +78,12 @@ def mark_switch_budget_and_greater_budgets(
         df.to_csv(out_path, index=False)
         print(f"✅ Wrote: {out_path}")
 
+# For each run (fid,iid,rep), determine the best budget based on static predictions of the selection models
+# Used for the run-specific switching data
+# If there are multiple best budgets, tie_break determines whether to choose the lowest or highest budget among them
 def make_run_specific_best_budgets(input_csv, output_csv, tie_break="lowest"):
     df = pd.read_csv(input_csv)
 
-    # all precision columns
     static_cols = [c for c in df.columns if c.startswith("static_B")]
 
     # extract numeric budgets from column names, e.g. "static_B8" -> 8
@@ -102,6 +113,8 @@ def make_run_specific_best_budgets(input_csv, output_csv, tie_break="lowest"):
     out.to_csv(output_csv, index=False)
     return out
 
+# For each ELA file, mark for each (fid,iid,rep) whether this budget is the best or greater than the best budget for that run
+# Used to create the run-specific switching data
 def mark_switch_budget_and_greater_budgets_per_run(
     ela_with_state_dir: str,
     best_budgets_csv: str,
@@ -125,8 +138,8 @@ def mark_switch_budget_and_greater_budgets_per_run(
         if not file.endswith(".csv"):
             continue
 
-        budget_str = file.split("_")[1]  # e.g. "B50"
-        budget = int(budget_str[1:])    # 50
+        budget_str = file.split("_")[1] 
+        budget = int(budget_str[1:])   
 
         ela_path = os.path.join(ela_with_state_dir, file)
         df = pd.read_csv(ela_path)
@@ -145,6 +158,9 @@ def mark_switch_budget_and_greater_budgets_per_run(
         out_path = os.path.join(output_dir, file)
         df.to_csv(out_path, index=False)
 
+# This function takes the normalized_precision ELA files used to train the selection models,
+# and substitutes the algorithm prediction columns with those from the given predictions CSV file
+# Used to create ELA files that also include the algorithm predictions from the selection models
 def update_algo_columns(predictions_csv: str, a1_folder: str, output_folder: str):
 
     algo_cols = ["BFGS", "DE", "Elitist", "MLSL", "Non-elitist", "PSO"]
@@ -162,12 +178,12 @@ def update_algo_columns(predictions_csv: str, a1_folder: str, output_folder: str
     # Create output folder if needed
     os.makedirs(output_folder, exist_ok=True)
 
-    # Iterate over all A1 files
+    # Iterate over all ELA files
     files = glob.glob(os.path.join(a1_folder, "A1_B*_5D_ela.csv"))
     for path in files:
         print(f"Processing {path} ...")
 
-        # Extract budget from filename (e.g., A1_B50_5D.csv → 50)
+        # Extract budget from filename
         m = re.search(r"_B(\d+)_", os.path.basename(path))
         if not m:
             print(f"Could not extract budget from filename {path}, skipping.")
@@ -189,35 +205,58 @@ def update_algo_columns(predictions_csv: str, a1_folder: str, output_folder: str
         # Warning if something mismatches
         if merged[algo_cols].isna().any().any():
             bad_rows = merged[merged[algo_cols].isna().any(axis=1)][["fid", "iid", "rep"]].drop_duplicates()
-            print(f"⚠ WARNING: Missing predictions for some rows:\n{bad_rows}")
+            print(f"WARNING: Missing predictions for some rows:\n{bad_rows}")
 
         # Save in output folder under same filename
         out_path = os.path.join(output_folder, os.path.basename(path))
         merged.to_csv(out_path, index=False)
-        print(f"✔ Wrote updated file to {out_path}")
+        print(f"Wrote updated file to {out_path}")
 
-    print("🎉 All updated files written to:", output_folder)
+# This function adds the lookahead predictions to the switching data
+# Currently, we first attach binary labels and then insert the predictions, weird workflow so I might change that later
+def add_preds_to_ela_folder(ela_dir, preds_csv, pattern="A1_B*_5D_ela.csv", out_dir=None):
+    ela_dir = Path(ela_dir)
+    preds = pd.read_csv(preds_csv)[["fid","iid","rep","budget","pred_t1","pred_t2","pred_t3"]]
+    preds[["fid","iid","rep","budget"]] = preds[["fid","iid","rep","budget"]].astype(int)
 
+    out_dir = Path(out_dir) if out_dir else (ela_dir / "with_preds")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for p in ela_dir.glob(pattern):
+
+        budget = int(p.stem.split("_B")[1].split("_")[0])
+        if budget == 1000: continue
+
+        # decide which prediction columns to use
+        if budget == 950:
+            use_cols = ["pred_t1"]
+        elif budget == 900:
+            use_cols = ["pred_t1", "pred_t2"]
+        else:
+            use_cols = ["pred_t1", "pred_t2", "pred_t3"]
+
+
+        ela = pd.read_csv(p)
+        ela[["fid","iid","rep"]] = ela[["fid","iid","rep"]].astype(int)
+        ela["budget"] = budget
+
+        ela = ela.merge(
+            preds[["fid","iid","rep","budget"] + use_cols],
+            on=["fid","iid","rep","budget"],
+            how="left"
+        ).drop(columns=["budget"])
+
+        cols = list(ela.columns)
+        insert_at = cols.index("switch")
+        for c in reversed(use_cols):
+            cols.insert(insert_at, cols.pop(cols.index(c)))
+        ela = ela[cols]
+
+        ela.to_csv(out_dir / p.name, index=False)
 
 if __name__ == "__main__":
-    # make_run_specific_best_budgets("../data/selector_performances/no_state_variance/predicted_static_precisions.csv",
-    #                                "../data/selector_performances/no_state_variance/best_budgets_per_run.csv", tie_break="highest")
-    
-    mark_switch_budget_and_greater_budgets_per_run(
-        ela_with_state_dir="../data/ela/A1_data_ela_with_algo_features",
-        best_budgets_csv="../data/selector_performances/algo_features/best_budgets_per_run.csv",
-        output_dir="../data/switch_data/A1_data_algo_features_switch_2"
+    add_preds_to_ela_folder(
+        ela_dir="../data/switch_data/A1_data_algo_features_switch",
+        preds_csv="../data/lookahead_performances/predicted_switchpoint_performances.csv",
+        out_dir="../data/switch_data/A1_data_algo_features_switch_with_lookahead_predictions"
     )
-
-    # update_algo_columns(
-    #     predictions_csv="../data/selector_performances/no_state_variance/all_normalized_predictions.csv",
-    #     a1_folder="../data/ela/A1_data_ela_normalized_with_precisions",
-    #     output_folder="../data/ela/A1_data_ela_with_algo_features_variance"
-    # )
-
-
-    # df1 = pd.read_csv("../data/selector_performances/algo_features_variance/best_budgets_per_run.csv")
-    # df2 = pd.read_csv("../data/selector_performances/algo_features/best_budgets_per_run.csv")
-
-    # # Check if best_budgets columns are identical
-    # print(f"Are best budgets identical? {df1['best_budget'].equals(df2['best_budget'])}")
