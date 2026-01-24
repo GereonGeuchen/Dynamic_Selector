@@ -5,6 +5,7 @@ from ioh import ProblemClass
 import warnings
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
+from pathlib import Path
 
 # Function that goes through the IOH logger files and creates clean CSV files containing of the relevant data for the pflacco computation.      
 def process_ioh_data(base_path):
@@ -160,6 +161,8 @@ def extract_a2_precisions(base_dir, output_file="A2_precisions.csv", algorithms=
     return result_df
 
 def add_algorithm_precisions(ela_dir, precision_csv, output_dir):
+    """Adds algorithm precisions to ELA feature files. Used to create the dataset with which the selection models are trained.
+    """
     os.makedirs(output_dir, exist_ok=True)
 
     # Load the full precision table
@@ -205,6 +208,8 @@ def normalize_ela_with_precisions(
     start_col=None,
     end_col=None
 ):
+    """This function normalizes ELA features using min-max scaling, 
+        and algorithm precisions using min-max scaling per fid across all algorithms."""
     df = pd.read_csv(path_in)
 
     # Columns that must NOT be normalized
@@ -259,17 +264,8 @@ def normalize_test_ela(
     norm_ranges=None,
 ):
     """
-    Normalize selected ELA features in the test set using a scaler
-    fitted on the training data.
-
-    Parameters
-    ----------
-    train_csv_path : str
-    test_csv_path  : str
-    test_out_path  : str
-    norm_ranges    : list of (start_col, end_col) or None
-        Column ranges (inclusive) that SHOULD be scaled.
-        If None, all non-index columns are scaled (old behaviour).
+    Used to create the ELA files for the test set. That is, it trains the min-max scalers on the training set,
+    and uses the trained scalers to normalize the test set.
     """
 
     # Load training and test data
@@ -280,9 +276,7 @@ def normalize_test_ela(
     index_cols = ["fid", "iid", "rep", "high_level_category"]
     all_cols = df_train.columns.tolist()
 
-    # ---------------------------------------
-    # 1) Determine which columns to normalize
-    # ---------------------------------------
+    # Determine which columns to normalize
     if norm_ranges is None:
         # Backwards-compatible behaviour: scale all non-index columns
         feature_cols = [col for col in df_train.columns if col not in index_cols]
@@ -305,24 +299,16 @@ def normalize_test_ela(
         # Remove index columns from the normalization set, just in case
         feature_cols = [c for c in norm_cols if c not in index_cols]
 
-    # ---------------------------------------
-    # 2) Fit scaler on the training data
-    # ---------------------------------------
+    # Fit scaler on the training data
     scaler = MinMaxScaler()
     scaler.fit(df_train[feature_cols])
 
-    # ---------------------------------------
-    # 3) Apply scaler to the test data
-    # ---------------------------------------
+    # Apply scaler to the test data
     df_final = df_test.copy()
     df_final[feature_cols] = scaler.transform(df_test[feature_cols])
     df_final[feature_cols] = df_final[feature_cols].astype(float)
 
-    # Index cols + all non-normalised feature cols are already in df_final unchanged
-
-    # ---------------------------------------
-    # 4) Sort & save
-    # ---------------------------------------
+    # Sort & save
     df_final = df_final.sort_values(by=["fid", "iid", "rep"]).reset_index(drop=True)
 
     out_dir = os.path.dirname(test_out_path)
@@ -333,98 +319,27 @@ def normalize_test_ela(
     print(f"Saved normalized test file to: {test_out_path}")
 
 def add_current_best(df: pd.DataFrame, gen_size: int = 8):
-
+    """Add 'current_best' column to csvs containing the raw evaluations. Used for "gradient" features.
+       """
     df = df.copy()
 
     def process_one_run(run_df):
-        # Assign generation index inside this run
         run_df = run_df.copy()
         run_df["generation"] = (run_df["evaluations"] - 1) // gen_size
 
-        # Best raw_y per generation
         gen_min = run_df.groupby("generation")["raw_y"].min()
         gen_best_cum = gen_min.cummin()
 
-        # Map cumulative best back to all rows
         run_df["current_best"] = run_df["generation"].map(gen_best_cum)
 
         return run_df.drop(columns=["generation"])
 
-    # Apply per unique run
     return df.groupby(["fid", "iid", "rep"], group_keys=False).apply(process_one_run)
 
-def normalize_ela_with_precisions_fid_scaling(path_in, path_out):
-    df = pd.read_csv(path_in)
-
-    # 1) Index-like columns (left untouched)
-    index_cols = ["fid", "iid", "rep", "high_level_category"]
-
-    # 2) Algorithm performance columns (per-fid scaling, kept as before)
-    algo_cols = ["BFGS", "DE", "Elitist", "MLSL", "Non-elitist", "PSO"]
-
-    cols = df.columns.tolist()
-
-    # 3) Global ELA features: from 'ela_distr.skewness' to 'nbc.nb_fitness.cor'
-    global_start = cols.index("ela_distr.skewness")
-    global_end = cols.index("nbc.nb_fitness.cor")
-    global_feature_cols = cols[global_start:global_end + 1]
-
-    # 4) Remaining feature columns (state / run features):
-    # everything that is not index, not algo, and not global ELA
-    per_fid_feature_cols = [
-        c for c in cols
-        if c not in index_cols + algo_cols + global_feature_cols
-    ]
-
-    # ---- 1. Global min-max scaling for global_feature_cols ----
-    global_scaler = MinMaxScaler()
-    df_global_scaled = pd.DataFrame(
-        global_scaler.fit_transform(df[global_feature_cols]),
-        columns=global_feature_cols,
-        index=df.index
-    )
-
-    # ---- 2. Per-fid min-max scaling for remaining feature columns ----
-    if per_fid_feature_cols:
-        df_state_scaled = df[per_fid_feature_cols].copy()
-
-        for fid, group in df.groupby("fid"):
-            scaler = MinMaxScaler()
-            scaled_vals = scaler.fit_transform(group[per_fid_feature_cols])
-            df_state_scaled.loc[group.index, :] = scaled_vals
-    else:
-        df_state_scaled = df[per_fid_feature_cols].copy()  # empty, but keeps structure
-
-    # ---- 3. Algo columns: per-fid scaling with flattening (unchanged) ----
-    df_scaled_algos = df[algo_cols].copy()
-
-    for fid, group in df.groupby("fid"):
-        algo_matrix = group[algo_cols].to_numpy()
-        flat_vals = algo_matrix.flatten().reshape(-1, 1)
-
-        scaler = MinMaxScaler(feature_range=(1e-12, 1))
-        flat_scaled = scaler.fit_transform(flat_vals).flatten()
-
-        scaled_matrix = flat_scaled.reshape(algo_matrix.shape)
-        df_scaled_algos.loc[group.index] = scaled_matrix
-
-    # ---- 4. Combine everything ----
-    df_final = df.copy()
-    df_final[global_feature_cols] = df_global_scaled
-    if per_fid_feature_cols:
-        df_final[per_fid_feature_cols] = df_state_scaled
-    df_final[algo_cols] = df_scaled_algos
-
-    df_final = df_final.sort_values(by=["fid", "iid", "rep"]).reset_index(drop=True)
-
-    out_dir = os.path.dirname(path_out)
-    if out_dir and not os.path.exists(out_dir):
-        os.makedirs(out_dir)
-
-    df_final.to_csv(path_out, index=False)
-    print(f"Saved normalized file to: {path_out}")
-
 def normalize_precision_per_fid(df, col="precision", min_scale=1e-12, max_scale=1.0):
+    """Normalizes precision files per fid using min-max scaling. Used to create the precision files
+       for when we include selection model predictions as features.
+    """
     df = df.copy()
 
     def scale_group(g):
@@ -443,70 +358,81 @@ def normalize_precision_per_fid(df, col="precision", min_scale=1e-12, max_scale=
     df = df.groupby("fid", group_keys=False).apply(scale_group)
     return df
 
-# Simple min-max normalisation of just ELA columns
-def minmax_normalize_ela_columns(
-    df: pd.DataFrame,
-    feature_range=(0.0, 1.0),
-    n_prefix_cols: int = 4,
-    n_suffix_cols: int = 6,
-) -> pd.DataFrame:
-    df = df.copy()
+def attach_future_best_precisions(
+    raw_ela_folder: str | Path,
+    best_precisions_csv: str | Path,
+    n_future: int = 3,
+) -> list[Path]:
+    """
+    Attach the best precisions of the next n switching points to each ELA file. Used for the lookahaed EPM.
+    """
+    raw_ela_folder = Path(raw_ela_folder)
+    best_precisions_csv = Path(best_precisions_csv)
 
-    # Split columns
-    cols = df.columns.tolist()
-    # prefix_cols = cols[:n_prefix_cols]
-    # suffix_cols = cols[-n_suffix_cols:] if n_suffix_cols > 0 else []
-    mid_cols = cols[n_prefix_cols:len(cols) - n_suffix_cols]
+    out_folder = raw_ela_folder.parent / "A1_data_ela_normlalized_with_future_performances"
+    out_folder.mkdir(parents=True, exist_ok=True)
 
-    # Apply MinMaxScaler to middle columns
-    scaler = MinMaxScaler(feature_range=feature_range)
-    df[mid_cols] = scaler.fit_transform(df[mid_cols])
+    # --- build lookahead table ---
+    best = pd.read_csv(best_precisions_csv)
+    best = best.sort_values(["fid", "iid", "rep", "budget"]).reset_index(drop=True)
 
-    return df
+    g = best.groupby(["fid", "iid", "rep"], sort=False)
+    for k in range(1, n_future + 1):
+        best[f"best_precision_t+{k}"] = g["best_precision"].shift(-k)
+
+    future_cols = (
+        ["fid", "iid", "rep", "budget"]
+        + [f"best_precision_t+{k}" for k in range(1, n_future + 1)]
+    )
+    future_table = best[future_cols]
+
+    written: list[Path] = []
+
+    # --- attach to each ELA file ---
+    for ela_path in raw_ela_folder.glob("A1_B*_5D_ela.csv"):
+        name = ela_path.stem  # e.g. "A1_B50_5D_ela"
+        parts = name.split("_")
+
+        # expected: ["A1", "B50", "5D", "ela"]
+        try:
+            budget = int(parts[1][1:])  # strip leading 'B'
+        except (IndexError, ValueError):
+            continue  # skip unexpected filenames
+
+        ela = pd.read_csv(ela_path)
+        ela["budget"] = budget  # temporary, for merge only
+
+        ela_aug = ela.merge(
+            future_table,
+            on=["fid", "iid", "rep", "budget"],
+            how="left",
+        )
+
+        # always drop budget again
+        ela_aug = ela_aug.drop(columns=["budget"])
+        future_colnames = [f"best_precision_t+{k}" for k in range(1, n_future + 1)]
+        drop_cols = [c for c in future_colnames if c in ela_aug.columns and ela_aug[c].isna().all()]
+        ela_aug = ela_aug.drop(columns=drop_cols)
+
+        out_path = out_folder / ela_path.name
+        ela_aug.to_csv(out_path, index=False, na_rep="")  # blanks instead of NaNs
+        written.append(out_path)
+
+    return written
 
 if __name__ == "__main__":
-    # budgets = [50*i for i in range(1, 21)]
-    
-    # for budget in budgets:
-    #     df = pd.read_csv(f"../data/ela/A1_data_ela_2/A1_B{budget}_5D_ela.csv")
-    #     df_norm = minmax_normalize_ela_columns(df)
-    #     df_norm.to_csv(f"../data/ela_normalized/A1_B{budget}_5D_ela.csv", index=False)    
-    # with warnings.catch_warnings():
-    #     warnings.simplefilter("ignore")
-    #     extract_a2_precisions(
-    #         base_dir="../data/run_data_5D/A2_data_5D",
-    #         output_file="../data/A2_precisions_2.csv",
-    #         max_evals=1000
-    #     )
-
-    # normalize_precision_per_fid(
-    #     df = pd.read_csv("../data/A2_precisions_2.csv")
-    # ).to_csv("../data/A2_precisions_2_normalized.csv", index=False)
-
-    # add_algorithm_precisions(
-    #     ela_dir="../data/ela/A1_data_ela_2_normalized",
-    #     precision_csv="../data/A2_precisions_2_normalized.csv",
-    #     output_dir="../data/ela/A1_data_ela_2_with_precisions"
-    # )
-
+    budgets = [50*i for i in range(1, 21)]
     # df = pd.read_csv("../data/A2_precisions_normalized.csv")
 
-    # # Apply log10 to precisions column
-    # df["precision"] = df["precision"].apply(lambda x: np.log10(x))
+    # df_best = (
+    #     df
+    #     .groupby(["fid", "iid", "rep", "budget"], as_index=False)
+    #     .agg(best_precision=("precision", "min"))
+    # )
 
-    # df.to_csv("../data/A2_precisions_normalized_log10.csv", index=False)
-    # with warnings.catch_warnings():
-    #     warnings.simplefilter("ignore")
-    #     extract_a2_precisions(
-    #         base_dir="../data/run_data_5D/A2_data_5D_test",
-    #         output_file="../data/A2_precisions_test_2.csv",
-    #         max_evals=1000
-    #     )
-    budgets = [8*i for i in range(1, 13) if 8*i != 56] + [50*i for i in range(2, 21)]
-    budgets = [56]
-    for budget in budgets:
-        normalize_test_ela(
-            train_csv_path=f"../data/ela/A1_data_ela/A1_B{budget}_5D_ela.csv",
-            test_csv_path=f"../data/ela/A1_data_ela_test/A1_B{budget}_5D_ela.csv",
-            test_out_path=f"../data/ela/A1_data_ela_test_normalized_2/A1_B{budget}_5D_ela.csv"
-        )
+    # df_best.to_csv("../data/A2_best_normalized_precisions.csv", index=False)
+    attach_future_best_precisions(
+        raw_ela_folder="../data/ela/A1_data_ela_normalized",
+        best_precisions_csv="../data/A2_best_normalized_precisions.csv",
+        n_future=3,
+    )
