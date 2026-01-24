@@ -26,8 +26,8 @@ def tune_performance_model(budget: int):
         output_dir=f"./smac_output_performance_no_state_2/B{budget}_performance",
         predict_log=True
     )
-    os.makedirs("algo_performance_models_no_state_2", exist_ok=True)
-    joblib.dump(pipeline, f"algo_performance_models_no_state_2/model_B{budget}.pkl")
+    # os.makedirs("algo_performance_models_no_state_2", exist_ok=True)
+    # joblib.dump(pipeline, f"algo_performance_models_no_state_2/model_B{budget}.pkl")
     
 def tune_switching_model(budget: int):
     if budget < 100 and budget != 50:
@@ -96,4 +96,4 @@ if __name__ == "__main__":
     # tune_performance_model(budget)
     # elif mode == "switching":
     #     tune_switching_model(budget)
-    train_and_save_selector_only(budget)
+    tune_performance_model(budget)

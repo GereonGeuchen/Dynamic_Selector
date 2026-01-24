@@ -10,9 +10,10 @@ WORKDIR="$HOME/Dokumente/Dynamic_Selector/model_optimisation/scripts"
 PY_SCRIPT="switch_model_optimisation.py"
 sbatch <<EOF
 #!/bin/bash
-#SBATCH --job-name=switch_optimisation_algo_features_variance
-#SBATCH --output=${WORKDIR}/logs/switch_optimisation_algo_features_variance.out
-#SBATCH --error=${WORKDIR}/logs/switch_optimisation_algo_features_variance.err
+#SBATCH -A p0026688
+#SBATCH --job-name=switch_optimisation_algo_features_lookahead
+#SBATCH --output=${WORKDIR}/logs/switch_optimisation_algo_features_lookahead.out
+#SBATCH --error=${WORKDIR}/logs/switch_optimisation_algo_features_lookahead.err
 #SBATCH --time=24:00:00
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=5

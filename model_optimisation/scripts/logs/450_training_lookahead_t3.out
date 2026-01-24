@@ -1,0 +1,6 @@
+[INFO][abstract_initial_design.py:87] Reducing the number of initial configurations from 50 to 25 (max_ratio == 0.25).
+[INFO][abstract_initial_design.py:139] Using 25 initial design configurations and 0 additional configurations.
+[INFO][smbo.py:509] Continuing from previous run.
+[INFO][smbo.py:278] Optimization process was already finished. Returning incumbent...
+Saved untrained lookahead model for budget 450, t+3 to ../data/models/untrained_models/lookahead_models_untrained/lookahead_model_B450_t3_untrained.pkl
+Saved lookahead model for budget 450, t+3 to ../data/models/tuned_models/lookahead_models_trained/lookahead_model_B450_t3_trained.pkl

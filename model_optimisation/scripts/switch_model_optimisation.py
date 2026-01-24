@@ -26,13 +26,13 @@ REPS = list(range(20))
 
 # === Paths ===
 
-ELA_DIR_SWITCH = "../data/A1_data_algo_features_variance_switch"
+ELA_DIR_SWITCH = "../data/A1_data_algo_features_switch_with_lookahead"
 ELA_DIR_ALGO = "../data/A1_data_ela_normalized_with_precisions"
 PRECISION_FILE = "../data/A2_precisions_normalized_log10.csv"
-CV_MODELS_DIR = "../data/models/trained_models/algo_performance_models_cv_algo_features_variance"
+CV_MODELS_DIR = "../data/models/trained_models/algo_performance_models_cv_algo_features"
 UNTRAINED_PERF_MODELS_DIR = "../data/models/untrained_models/algo_performance_models_algo_features"
-SMAC_OUTPUT_DIR = "smac_output_switch_optimisation_algo_features_variance"
-OUTPUT_PATH = "../data/models/tuned_models/switching_models_algo_features_variance"
+SMAC_OUTPUT_DIR = "smac_output_switch_lookahead"
+OUTPUT_PATH = "../data/models/tuned_models/switching_models_lookahead"
 
 
 # ========== Helper classes ==========
@@ -70,7 +70,7 @@ class SwitchingSelectorCV:
             features_switch = row_switch.iloc[:, 4:]
             features_switch.index = [(fid, iid, rep)]
             should_switch = switch_model.predict(features_switch)[0]
-
+            print(should_switch)
 
             if should_switch:
                 print(f"Switching at budget {budget} for fid={fid}, iid={iid}, rep={rep}")
