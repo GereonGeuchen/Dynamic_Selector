@@ -369,7 +369,7 @@ def attach_future_best_precisions(
     raw_ela_folder = Path(raw_ela_folder)
     best_precisions_csv = Path(best_precisions_csv)
 
-    out_folder = raw_ela_folder.parent / "A1_data_ela_normlalized_with_future_performances"
+    out_folder = raw_ela_folder.parent / "A1_data_ela_normalized_with_future_performances_20"
     out_folder.mkdir(parents=True, exist_ok=True)
 
     # --- build lookahead table ---
@@ -434,5 +434,5 @@ if __name__ == "__main__":
     attach_future_best_precisions(
         raw_ela_folder="../data/ela/A1_data_ela_normalized",
         best_precisions_csv="../data/A2_best_normalized_precisions.csv",
-        n_future=3,
+        n_future=20,
     )
