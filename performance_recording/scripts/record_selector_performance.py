@@ -7,7 +7,7 @@ import warnings
 
 SELECTOR_DIR = "../data/models/algo_performance_models_algo_features"
 ELA_TEMPLATE = "../data/ela/A1_data_ela_normalized_with_precisions/A1_B{budget}_5D_ela.csv"
-OUTPUT_DIR = "../data/selector_performances/algo_features"
+OUTPUT_DIR = "../data/selector_performances/algo_features_test"
 
 def crossvalidated_static_predictions(
     budget,

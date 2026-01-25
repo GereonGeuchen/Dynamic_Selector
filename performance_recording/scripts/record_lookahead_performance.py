@@ -7,8 +7,8 @@ import warnings
 MODEL_DIR = "../data/models/lookahead_models_untrained"
 ELA_TEMPLATE = "../data/ela/A1_data_ela_normalized_with_future_performances/A1_B{budget}_5D_ela.csv"
 
-OUTPUT_DIR = "../data/lookahead_performances/just_ela"
-OUT_FILE = "predicted_switchpoint_performances.csv"
+OUTPUT_DIR = "../data/lookahead_performances"
+OUT_FILE = "predicted_switchpoint_performances_test.csv"
 
 MODEL_TEMPLATE = "lookahead_model_B{budget}_t{t}_untrained.pkl"
 
