@@ -13,15 +13,15 @@ from sklearn.metrics import r2_score
 
 
 # === Parameters ===
-ela_data_dir = "../data/A1_data_ela_normalized_with_future_performances"
-smac_output_dir = "smac_output_lookahead_optimisation"
+ela_data_dir = "../data/A1_data_ela_normalized_with_future_performances_20"
+smac_output_dir = "smac_outputs/smac_output_lookahead_optimisation"
 output_models_dir = "../data/models/tuned_models/lookahead_models_trained"
 untrained_output_models_dir = "../data/models/untrained_models/lookahead_models_untrained"
 
 
 def _target_col(horizon: int) -> str:
-    if horizon not in (1, 2, 3):
-        raise ValueError(f"horizon must be 1, 2, or 3; got {horizon}")
+    if horizon not in range(1, 20):
+        raise ValueError(f"horizon must be in 1..19, got {horizon}")
     return f"best_precision_t+{horizon}"
 
 
@@ -93,19 +93,11 @@ def make_smac_objective_for_budget_and_horizon(budget: int, horizon: int):
 
 def tune_lookahead_model(budget: int, horizon: int, n_trials: int = 100, seed: int = 42):
     """
-    Tunes and trains ONE model for the given budget and horizon (t+1 / t+2 / t+3).
+    Tunes and trains ONE model for the given budget and horizon (t+1 .. t+19).
     Saves model to output_models_dir.
     """
-    if budget == 1000:
-        print("Skipping budget 1000: not considered.")
-        return None
-
-    # Guardrails per your note (optional; actual presence check happens below too)
-    if horizon == 3 and budget >= 900:
-        print(f"Skipping B{budget}, t+3: horizon not available from budget >= 900.")
-        return None
-    if horizon == 2 and budget >= 950:
-        print(f"Skipping B{budget}, t+2: horizon not available from budget >= 950.")
+    if horizon > (1000 - budget) // 50:
+        print(f"Skipping B{budget}, t+{horizon}: horizon not available from budget.")
         return None
 
     ela_path = Path(ela_data_dir) / f"A1_B{budget}_5D_ela.csv"

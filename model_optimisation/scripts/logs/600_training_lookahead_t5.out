@@ -1,0 +1,24 @@
+[INFO][abstract_initial_design.py:87] Reducing the number of initial configurations from 50 to 25 (max_ratio == 0.25).
+[INFO][abstract_initial_design.py:139] Using 25 initial design configurations and 0 additional configurations.
+[INFO][abstract_intensifier.py:307] Using only one seed for deterministic scenario.
+[INFO][abstract_intensifier.py:517] Added config c4a454 as new incumbent because there are no incumbents yet.
+[INFO][abstract_intensifier.py:596] Added config 0affcf and rejected config c4a454 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 8b738e and rejected config 0affcf as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 027a56 and rejected config 8b738e as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config e3a793 and rejected config 027a56 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config a9c19b and rejected config e3a793 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config ad5a41 and rejected config a9c19b as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 5991f7 and rejected config ad5a41 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config ce6369 and rejected config 5991f7 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 68c530 and rejected config ce6369 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 50 trials.
+[INFO][abstract_intensifier.py:596] Added config 273754 and rejected config 68c530 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 7fa2df and rejected config 273754 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 0cfd0c and rejected config 7fa2df as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 100 trials.
+[INFO][smbo.py:335] Configuration budget is exhausted:
+[INFO][smbo.py:336] --- Remaining wallclock time: inf
+[INFO][smbo.py:337] --- Remaining cpu time: inf
+[INFO][smbo.py:338] --- Remaining trials: 0
+Saved untrained lookahead model for budget 600, t+5 to ../data/models/untrained_models/lookahead_models_untrained/lookahead_model_B600_t5_untrained.pkl
+Saved lookahead model for budget 600, t+5 to ../data/models/tuned_models/lookahead_models_trained/lookahead_model_B600_t5_trained.pkl

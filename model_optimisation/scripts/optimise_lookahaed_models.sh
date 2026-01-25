@@ -22,7 +22,7 @@ for i in $(seq 1 19); do
   BUDGETS+=($((50 * i)))
 done
 for BUDGET in "${BUDGETS[@]}"; do
-    for I in 1 2 3; do
+    for I in $(seq 4 10); do
   sbatch <<EOF
 #!/bin/bash
 #SBATCH -A p0026688

@@ -1,0 +1,20 @@
+[INFO][abstract_initial_design.py:87] Reducing the number of initial configurations from 50 to 25 (max_ratio == 0.25).
+[INFO][abstract_initial_design.py:139] Using 25 initial design configurations and 0 additional configurations.
+[INFO][abstract_intensifier.py:307] Using only one seed for deterministic scenario.
+[INFO][abstract_intensifier.py:517] Added config c4a454 as new incumbent because there are no incumbents yet.
+[INFO][abstract_intensifier.py:596] Added config 0affcf and rejected config c4a454 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 8b738e and rejected config 0affcf as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config ad5a41 and rejected config 8b738e as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 50 trials.
+[INFO][abstract_intensifier.py:596] Added config 6f6d29 and rejected config ad5a41 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config f03e82 and rejected config 6f6d29 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 1eb66d and rejected config f03e82 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 25046c and rejected config 1eb66d as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 96f289 and rejected config 25046c as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 100 trials.
+[INFO][smbo.py:335] Configuration budget is exhausted:
+[INFO][smbo.py:336] --- Remaining wallclock time: inf
+[INFO][smbo.py:337] --- Remaining cpu time: inf
+[INFO][smbo.py:338] --- Remaining trials: 0
+Saved untrained lookahead model for budget 550, t+6 to ../data/models/untrained_models/lookahead_models_untrained/lookahead_model_B550_t6_untrained.pkl
+Saved lookahead model for budget 550, t+6 to ../data/models/tuned_models/lookahead_models_trained/lookahead_model_B550_t6_trained.pkl
