@@ -7,7 +7,7 @@ import warnings
 
 SELECTOR_MODEL_DIR = "../data/trained_models/switching_models_lookahead"
 PERFORMANCE_MODEL_DIR = "../data/trained_models/algo_performance_models_trained_algo_features"
-SAVE_PATH = "../results/selector_results_with_lookahead.csv"
+SAVE_PATH = "../results/selector_results_with_lookahead_test.csv"
 ELA_DIR = "../data/A1_data_ela_test_normalized"
 PRECISION_FILE = "../data/A2_precisions_test.csv"
 BUDGETS = list(range(50, 1001, 50))

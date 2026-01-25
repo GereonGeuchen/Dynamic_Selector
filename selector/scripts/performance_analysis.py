@@ -51,27 +51,29 @@ if __name__== "__main__":
     #     if col.startswith("static_B"):
     #         print(f"{col}: {df[col].sum()}")
 
-    # # Perfmutation test, print results
-    # budgets = [50*i for i in range(1, 21)]
-    # for budget in budgets:
-    #     static_col = f'static_B{budget}'
-    #     if static_col not in df.columns:
-    #         print(f"⚠ {static_col} not found in dataframe, skipping.")
-    #         continue
+    # Perfmutation test, print results
+    budgets = [50*i for i in range(1, 21)]
+    for budget in budgets:
+        static_col = f'static_B{budget}'
+        if static_col not in df.columns:
+            print(f"⚠ {static_col} not found in dataframe, skipping.")
+            continue
 
-    #     selector = df['selector_precision'].values
-    #     static = df[static_col].values
+        selector = df['selector_precision'].values
+        static = df[static_col].values
 
-    #     res = permutation_test(
-    #         (selector, static),
-    #         statistic=lambda x, y: np.mean(x - y),
-    #         permutation_type='samples',
-    #         vectorized=False,
-    #         n_resamples=10000,
-    #         alternative='less',
-    #         random_state=42
-    #     )
+        res = permutation_test(
+            (selector, static),
+            statistic=lambda x, y: np.mean(x - y),
+            permutation_type='samples',
+            vectorized=False,
+            n_resamples=10000,
+            alternative='less',
+            random_state=42
+        )
 
-    #     print(f"Permutation test between selector and {static_col}: p-value = {res.pvalue}")
+        print(f"Permutation test between selector and {static_col}: p-value = {res.pvalue}")
     # find_best_switching_sum(df)
-    print_performances(df)
+    # print_performances(df)
+
+    # print(df["selector_precision"].sum())
