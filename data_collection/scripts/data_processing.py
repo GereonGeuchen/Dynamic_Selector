@@ -97,10 +97,12 @@ def extract_a2_precisions(base_dir, output_file="A2_precisions.csv", algorithms=
 
     for algo in algorithms:
         for budget in budgets:
-            if budget != 56:
-                if budget % 50 != 0: continue
+            print(f"Processing algorithm={algo}, budget={budget}...")
+            # if budget != 56:
+            #     if budget % 50 != 0: continue
             folder_name = os.path.join(base_dir, f"A2_{algo}_B{budget}_5D")
             if not os.path.isdir(folder_name):
+                print(f"Directory not found: {folder_name}")
                 continue
             for fid in fids:
                 func_folders = [f for f in os.listdir(folder_name) if f.startswith(f"data_f{fid}_")]
@@ -420,6 +422,21 @@ def attach_future_best_precisions(
 
     return written
 
+
+def aggregate_precision_by_budget_algorithm(
+    input_df: pd.DataFrame,
+    output_path: str
+):
+
+    result = (
+        input_df.groupby(["budget", "algorithm"], as_index=False)["precision"]
+          .sum()
+          .sort_values("precision", ascending=True)
+    )
+
+    result.to_csv(output_path, index=False)
+    return result
+
 if __name__ == "__main__":
     budgets = [50*i for i in range(1, 21)]
     # df = pd.read_csv("../data/A2_precisions_normalized.csv")
@@ -431,8 +448,7 @@ if __name__ == "__main__":
     # )
 
     # df_best.to_csv("../data/A2_best_normalized_precisions.csv", index=False)
-    attach_future_best_precisions(
-        raw_ela_folder="../data/ela/A1_data_ela_normalized",
-        best_precisions_csv="../data/A2_best_normalized_precisions.csv",
-        n_future=20,
+    aggregate_precision_by_budget_algorithm(
+        pd.read_csv("../data/A2_precisions.csv"),
+        "A2_aggregated_precisions_by_budget_algorithm_nonElitist.csv"
     )

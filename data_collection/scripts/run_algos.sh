@@ -14,13 +14,13 @@ mkdir -p "$WORKDIR/logs"
 
 # === Budgets: [8*i for i in 1..12] and [50*i for i in 1..20] ===
 
-# First sequence: 8 * [1..12]
-for i in $(seq 1 12); do
-  BUDGETS+=($((8 * i)))
-done
+# # First sequence: 8 * [1..12]
+# for i in $(seq 1 12); do
+#   BUDGETS+=($((8 * i)))
+# done
 
 # Second sequence: 50 * [1..20]
-for i in $(seq 2 20); do
+for i in $(seq 1 20); do
   BUDGETS+=($((50 * i)))
 done
 
@@ -29,7 +29,7 @@ for BUDGET in "${BUDGETS[@]}"; do
 
   sbatch <<EOF
 #!/bin/bash
-#SBATCH -A thes2015
+#SBATCH -A p0026688
 #SBATCH --job-name=ela_B${BUDGET}
 #SBATCH --output=${WORKDIR}/logs/ela_B${BUDGET}.out
 #SBATCH --error=${WORKDIR}/logs/ela_B${BUDGET}.err

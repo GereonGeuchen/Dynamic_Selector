@@ -126,7 +126,7 @@ class From_CMA_To_CMA():
         self.total_budget = total_budget_factor*self.dim
         
     def __call__(self, problem, A2, hparams = {}):
-        if A2 == "Non-elitist":
+        if A2 == "Elitist":
             budget = self.total_budget
         else:
             budget = self.budget_factor
@@ -140,14 +140,14 @@ class From_CMA_To_CMA():
                     bound_correction='saturate',
                     sigma0 = 2.0,
                     x0 = np.zeros((self.dim,1)),
-                    elitist = False
+                    elitist = True
                 ).run()
         
-        if A2 == "Non-elitist":
+        if A2 == "Elitist":
             return
         
-        if A2 == "Elitist":
-            cma.parameters.elitist = True
+        if A2 == "Non-elitist":
+            cma.parameters.elitist = False
             cma.parameters.budget = self.total_budget
         cma.run()
         
@@ -170,7 +170,7 @@ class Switched_From_CMA():
                     bound_correction='saturate',
                     sigma0 = 2.0,
                     x0 = np.zeros((self.dim,1)),
-                    elitist = False
+                    elitist = True
                 ).run()
         
         params = {}
@@ -211,7 +211,7 @@ def collect_A1_data(budget_factor, dim = 5):
     logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])
     
     for fid in range(1,25):
-        for iid in range(6, 8):
+        for iid in range(1, 6):
             problem = ioh.get_problem(fid, iid, dim, ProblemClass.BBOB)
 
             
@@ -247,7 +247,7 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False):
 
     logger = ioh.logger.Analyzer(
         triggers=[trigger],
-        folder_name=f'../data/run_data_5D/A2_data_5D_test/A2_{algname}_B{budget_factor}_{dim}D',
+        folder_name=f'../data/run_data_5D/A2_data_5D_elitistA1/A2_{algname}_B{budget_factor}_{dim}D',
         algorithm_name=algname,
         store_positions=True,
     )
@@ -255,7 +255,7 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False):
     logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])
 
     for fid in range(1, 25):
-        for iid in range(6, 8):
+        for iid in range(1, 6):
 
             problem = ioh.get_problem(fid, iid, dim, ProblemClass.BBOB)
     
@@ -310,7 +310,7 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False):
 def collect_all(x = None):
     budget_factor, dim = x
     # First, collect A1 data
-    collect_A1_data(budget_factor, dim)
+    # collect_A1_data(budget_factor, dim)
     
     # Then collect A2 data
     for A2, algname in zip([MLSL, DE, PSO, BFGS, None, None], ["MLSL", "DE", "PSO", "BFGS", "Non-elitist", "Elitist"]):
@@ -328,7 +328,7 @@ def collect_all(x = None):
                 
                 
 def get_combinations():
-    budget_factors = [8*i for i in range (1,13)] + [50*i for i in range(1, 21)] # 10, 20, ..., 1000
+    budget_factors = [50*i for i in range(1, 21)] # 10, 20, ..., 1000
     # budget_factors = [300]
     dim = 5
     return [(bf, dim) for bf in budget_factors]
