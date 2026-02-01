@@ -20,11 +20,11 @@ from classical_ela_features import ( # type: ignore
 )
 
 def calculate_ela_features(budget):
-    base_folder = "../data/run_data_5D/A1_data_5D_test"   
-    output_folder = "../data/raw_ela_data/A1_data_ela_test_2"           
+    base_folder = "../data/run_data_5D/A1_data_5D_affine_test"   
+    output_folder = "../data/raw_ela_data/A1_data_ela_affine_test"           
 
     os.makedirs(output_folder, exist_ok=True)
-    filename = f"A1_B{budget}_5D_with_current_best.csv"
+    filename = f"A1_B{budget}_5D.csv"
     filepath = os.path.join(base_folder, filename)
     df = pd.read_csv(filepath)
 
@@ -35,10 +35,10 @@ def calculate_ela_features(budget):
 
     first_write = True  # controls header
 
-    for (fid, iid, rep), group in df.groupby(["fid", "iid", "rep"]):
+    for (fid, type, rep), group in df.groupby(["fid", "type", "rep"]):
         int_rep = int(rep)
         np.random.seed(int_rep)
-        print(f"Processing fid: {fid}, iid: {iid}, rep: {rep}, budget: {budget}")
+        print(f"Processing fid: {fid}, type: {type}, rep: {rep}, budget: {budget}")
         group = group.reset_index(drop=True)
         X = group[x_cols].to_numpy()
         # Changed truey_y to raw_y for testing purposes
@@ -108,21 +108,22 @@ def calculate_ela_features(budget):
 
         # Add identifying metadata
         features["fid"] = fid
-        features["iid"] = iid
+        features["type"] = type
         features["rep"] = rep
 
-        if fid in [1, 2, 3, 4, 5]:
-            features["high_level_category"] = 1
-        elif fid in [6, 7, 8, 9]:
-            features["high_level_category"] = 2
-        elif fid in [10, 11, 12, 13, 14]:
-            features["high_level_category"] = 3
-        elif fid in [15, 16, 17, 18, 19]:
-            features["high_level_category"] = 4
-        elif fid in [20, 21, 22, 23, 24]:
-            features["high_level_category"] = 5
-        else:
-            features["high_level_category"] = None
+        # if fid in [1, 2, 3, 4, 5]:
+        #     features["high_level_category"] = 1
+        # elif fid in [6, 7, 8, 9]:
+        #     features["high_level_category"] = 2
+        # elif fid in [10, 11, 12, 13, 14]:
+        #     features["high_level_category"] = 3
+        # elif fid in [15, 16, 17, 18, 19]:
+        #     features["high_level_category"] = 4
+        # elif fid in [20, 21, 22, 23, 24]:
+        #     features["high_level_category"] = 5
+        # else:
+        #     features["high_level_category"] = None
+        features["high_level_category"] = "affine"
 
         # Remove ela_meta.quad_w_interact.adj_r2 if budget <= 56
 
@@ -130,13 +131,13 @@ def calculate_ela_features(budget):
             features.pop('ela_meta.quad_w_interact.adj_r2', None)
             if budget <= 16:
                 features.pop('ela_meta.lin_w_interact.adj_r2', None)
-
+    
         for key in list(features.keys()):
             if key.endswith(".costs_runtime"):
                 features.pop(key, None)
         # Create DataFrame for one row, reorder columns
         row_df = pd.DataFrame([features])
-        cols = ["fid", "iid", "rep", "high_level_category"]
+        cols = ["fid", "type", "rep", "high_level_category"]
         ordered_cols = cols + [col for col in row_df.columns if col not in cols]
         row_df = row_df[ordered_cols]
 

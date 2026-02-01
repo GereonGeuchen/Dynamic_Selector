@@ -1,6 +1,8 @@
 import sys
-import os 
+import os
+
 sys.path.append(os.path.join(os.path.dirname(__file__), 'algorithms'))
+from affine_barebones import ManyAffine 
 import time
 
 import shutil
@@ -126,7 +128,7 @@ class From_CMA_To_CMA():
         self.total_budget = total_budget_factor*self.dim
         
     def __call__(self, problem, A2, hparams = {}):
-        if A2 == "Elitist":
+        if A2 == "Non-elitist":
             budget = self.total_budget
         else:
             budget = self.budget_factor
@@ -140,13 +142,13 @@ class From_CMA_To_CMA():
                     bound_correction='saturate',
                     sigma0 = 2.0,
                     x0 = np.zeros((self.dim,1)),
-                    elitist = True
+                    elitist = False
                 ).run()
         
-        if A2 == "Elitist":
+        if A2 == "Non-elitist":
             return
         
-        if A2 == "Non-elitist":
+        if A2 == "Elitist":
             cma.parameters.elitist = False
             cma.parameters.budget = self.total_budget
         cma.run()
@@ -170,7 +172,7 @@ class Switched_From_CMA():
                     bound_correction='saturate',
                     sigma0 = 2.0,
                     x0 = np.zeros((self.dim,1)),
-                    elitist = True
+                    elitist = False
                 ).run()
         
         params = {}
@@ -197,15 +199,13 @@ class Switched_From_CMA():
         
 def collect_A1_data(budget_factor, dim = 5):
     trigger = ioh.logger.trigger.Always()
-    additional_property = ioh.logger.property.RawYBest()
 
 
     logger = ioh.logger.Analyzer(
         triggers=[trigger],
-        folder_name=f'../data/run_data_5D/A1_data_5D_test/A1_B{budget_factor}_{dim}D',
+        folder_name=f'../data/run_data_5D/A1_data_5D/A1_B{budget_factor}_{dim}D',
         algorithm_name='ModCMA_A1',
         store_positions=True,
-        additional_properties=[additional_property]
     )
     tracked_parameters = TrackedParameters()
     logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])
@@ -314,7 +314,7 @@ def collect_all(x = None):
     
     # Then collect A2 data
     for A2, algname in zip([MLSL, DE, PSO, BFGS, None, None], ["MLSL", "DE", "PSO", "BFGS", "Non-elitist", "Elitist"]):
-        collect_A2(budget_factor, dim, A2, algname)
+        record_A2_runs_on_affine(budget_factor, dim, A2, algname)
 
 
     # Only run BFGS
@@ -349,6 +349,157 @@ def get_combinations():
 #     # problem = ioh.get_problem(1, 1, 5, ProblemClass.BBOB)
 #     # print(type(problem))
 
+def record_runs_on_affine_combinations():
+    # Set fixed seed for reproducibility
+    np.random.seed(42)
+    
+    random_weights_iids_opt_loc_1to5 = {}
+    for i in range(15):
+        weights = np.random.uniform(size=24)
+        # Sample iids from 1 to 5
+        iids = np.random.randint(1, 6, size=24)
+        opt_loc = np.random.uniform(size=5)*10-5 #in [-5,5] as BBOB
+        random_weights_iids_opt_loc_1to5[i] = (weights, iids, opt_loc)
+
+    random_weights_iids_opt_loc_6to7 = {}
+    for i in range(15):
+        weights = np.random.uniform(size=24)
+        # Sample iids from 6 to 7
+        iids = np.random.randint(6, 8, size=24)
+        opt_loc = np.random.uniform(size=5)*10-5 #in [-5,5] as BBOB
+        random_weights_iids_opt_loc_6to7[i] = (weights, iids, opt_loc)
+
+    random_weights_iids_opt_loc_1to7 = {}
+    for i in range(15):
+        weights = np.random.uniform(size=24)
+        # Sample iids from 1 to 7
+        iids = np.random.randint(1, 8, size=24)
+        opt_loc = np.random.uniform(size=5)*10-5 #in [-5,5] as BBOB
+        random_weights_iids_opt_loc_1to7[i] = (weights, iids, opt_loc)
+    
+    return (random_weights_iids_opt_loc_1to5, random_weights_iids_opt_loc_6to7, random_weights_iids_opt_loc_1to7)
+
+def record_A1_runs_on_affine(budget_factor, dim = 5):
+   
+    
+    (weights_iids_opt_loc_1to5, weights_iids_opt_loc_6to7, weights_iids_opt_loc_1to7) = record_runs_on_affine_combinations()
+    
+    combo_sets = [
+    ("1to5", weights_iids_opt_loc_1to5),
+    ("6to7", weights_iids_opt_loc_6to7),
+    ("1to7", weights_iids_opt_loc_1to7),
+    ]
+    trigger = ioh.logger.trigger.Always()
+    logger = ioh.logger.Analyzer(
+        triggers=[trigger],
+        folder_name=f'../data/run_data_5D/A1_data_5D_affine_test2/A1_B{budget_factor}_{dim}D',
+        algorithm_name='ModCMA_A1',
+        store_positions=True
+        )
+
+    tracked_parameters = TrackedParameters()
+    logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])
+
+    for combo_name, combo_dict in combo_sets:
+      
+        for key in combo_dict:
+            weights, iids, opt_loc = combo_dict[key]
+            f_new = ManyAffine(weights, 
+                               iids, 
+                               opt_loc, dim)
+            problem = ioh.problem.wrap_real_problem(
+                f_new,                                     
+                name=f"affine_test_problem_{combo_name}_{key}",                               
+                optimization_type=ioh.OptimizationType.MIN, 
+                lb=-5,                                               
+                ub=5
+            )
+
+            problem = ioh.get_problem(f"affine_test_problem_{combo_name}_{key}", 0, dim)
+            # Attach the logger to the problem
+            problem.attach_logger(logger)
+            
+            for rep in range(20):
+                tracked_parameters.rep = rep
+                tracked_parameters.iid = key
+                print(f"Running affine combination {combo_name}_{key} repetition {rep} with A1, budget {budget_factor}")
+                np.random.seed(rep)
+                cma = TrackedCMAES(
+                    tracked_parameters, 
+                    problem, 
+                    dim, 
+                    budget=budget_factor,
+                    active=True,
+                    bound_correction='saturate',
+                    sigma0 = 2.0,
+                    x0 = np.zeros((dim,1)),
+                    elitist = False
+                ).run()
+                problem.reset()
+            problem.detach_logger()
+
+def record_A2_runs_on_affine(budget_factor, dim, A2, algname):
+    (weights_iids_opt_loc_1to5, weights_iids_opt_loc_6to7, weights_iids_opt_loc_1to7) = record_runs_on_affine_combinations()
+    
+    combo_sets = [
+    ("1to5", weights_iids_opt_loc_1to5),
+    ("6to7", weights_iids_opt_loc_6to7),
+    ("1to7", weights_iids_opt_loc_1to7),
+    ]
+    if algname == "BFGS":
+        trigger = ioh.logger.trigger.Always()
+    else:
+        trigger = ioh.logger.trigger.OnImprovement()
+
+    logger = ioh.logger.Analyzer(
+        triggers=[trigger],
+        folder_name=f'../data/run_data_5D/A2_data_5D_affine_test2/A2_{algname}_B{budget_factor}_{dim}D',
+        algorithm_name=algname,
+        store_positions=True,
+    )
+
+    tracked_parameters = TrackedParameters()
+    logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])
+
+    for combo_name, combo_dict in combo_sets:
+      
+        for key in combo_dict:
+            weights, iids, opt_loc = combo_dict[key]
+            f_new = ManyAffine(weights, 
+                               iids, 
+                               opt_loc, dim)
+            problem = ioh.problem.wrap_real_problem(
+                f_new,                                     
+                name=f"affine_test_problem_{combo_name}_{key}",                               
+                optimization_type=ioh.OptimizationType.MIN, 
+                lb=-5,                                               
+                ub=5
+            )
+
+            problem = ioh.get_problem(f"affine_test_problem_{combo_name}_{key}", 0, dim)
+            # Attach the logger to the problem
+            problem.attach_logger(logger)
+            
+            for rep in range(20):
+                tracked_parameters.rep = rep
+                tracked_parameters.iid = key
+                print(f"Running affine combination {combo_name}_{key} repetition {rep} with A2 {algname}, budget {budget_factor}")
+                np.random.seed(rep)
+                
+                if algname in ["Elitist", "Non-elitist"]:
+                    alg = From_CMA_To_CMA(budget_factor, dim, algname, total_budget_factor=200)
+                    alg(problem, algname)
+                else:
+                    alg = Switched_From_CMA(budget_factor, dim, A2, total_budget_factor=200)
+                    alg(problem, A2)
+
+                print("Evaluations:", problem.state.evaluations)
+        
+
+                problem.reset()
+            
+            problem.detach_logger()
+
 if __name__ == '__main__':
     warnings.filterwarnings("ignore", category=RuntimeWarning) 
     warnings.filterwarnings("ignore", category=FutureWarning)
@@ -359,3 +510,4 @@ if __name__ == '__main__':
     dim = 5  # Fixed dimensionality!
     budget_factor = args.budget
     collect_all((budget_factor, dim))
+    # record_A1_runs_on_affine(budget_factor, dim)

@@ -80,6 +80,100 @@ def process_ioh_data(base_path):
             combined.to_csv(output_path, index=False)
             print(f"Saved: {output_path}")
 
+def process_ioh_data_affine(base_path, dim=5):
+    allowed_types = {"1to5", "6to7", "1to7"}
+    x_cols = [f"x{i}" for i in range(dim)]
+    numeric_cols = ["evaluations", "raw_y", "rep"] + x_cols
+
+    for budget_dir in os.listdir(base_path):
+        budget_path = os.path.join(base_path, budget_dir)
+        if not os.path.isdir(budget_path):
+            continue
+
+        all_rows = []
+
+        for run_dir in os.listdir(budget_path):
+            run_path = os.path.join(budget_path, run_dir)
+            if not os.path.isdir(run_path):
+                continue
+
+            # Expect: data_f{fid}_affine_test_problem_{type}_{inst}
+            if not run_dir.startswith("data_f"):
+                continue
+
+            parts = run_dir.split("_")
+            # ["data", "f1121", "affine", "test", "problem", "1to5", "0"]
+            if len(parts) != 7:
+                continue
+            if parts[0] != "data" or not parts[1].startswith("f"):
+                continue
+            if parts[2:5] != ["affine", "test", "problem"]:
+                continue
+
+            fid_str = parts[1][1:]  # after 'f'
+            if not fid_str.isdigit():
+                continue
+            fid = int(fid_str)
+
+            combo_type = parts[5]
+            if combo_type not in allowed_types:
+                continue
+
+            inst_str = parts[6]
+            if not inst_str.isdigit():
+                continue
+            # inst_id = int(inst_str)  # ignored
+
+            dat_file = os.path.join(run_path, f"IOHprofiler_f{fid}_DIM{dim}.dat")
+            if not os.path.isfile(dat_file):
+                continue
+
+            try:
+                df = pd.read_csv(dat_file, delim_whitespace=True, comment="#", dtype=str)
+            except Exception as e:
+                print(f"Error reading {dat_file}: {e}")
+                continue
+
+            # Some IOH logs can contain repeated header rows; filter defensively if needed
+            # (Your previous code used df[df['iid'] != 'iid']; we won't rely on iid now.)
+            if "rep" in df.columns:
+                df = df[df["rep"] != "rep"]
+
+            # Ensure needed columns exist
+            missing = [c for c in (["rep", "evaluations", "raw_y"] + x_cols) if c not in df.columns]
+            if missing:
+                print(f"Skipping {dat_file}: missing columns {missing}")
+                continue
+
+            # Convert numeric columns
+            df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
+            df = df.dropna(subset=numeric_cols)
+
+            # Add index columns
+            df["fid"] = fid
+            df["type"] = combo_type
+
+            # true_y is just raw_y (no problem lookup)
+            df["true_y"] = df["raw_y"]
+
+            # Keep only what you want
+            keep_cols = ["fid", "type", "rep", "evaluations", "raw_y", "true_y"] + x_cols
+            all_rows.append(df[keep_cols])
+
+        if all_rows:
+            combined = pd.concat(all_rows, ignore_index=True)
+
+            # Sort rows by your new index
+            combined = combined.sort_values(
+                by=["fid", "type", "rep", "evaluations"]
+            ).reset_index(drop=True)
+
+            output_path = os.path.join(base_path, f"{budget_dir}.csv")
+            combined.to_csv(output_path, index=False)
+            print(f"Saved: {output_path}")
+        else:
+            print(f"No data found for budget dir: {budget_dir}")
+
 # Function that creates the A2_precisions.csv file from the run data.
 def extract_a2_precisions(base_dir, output_file="A2_precisions.csv", algorithms=None, budgets=None, fids=range(1, 25), max_evals=1000):
 
@@ -161,6 +255,133 @@ def extract_a2_precisions(base_dir, output_file="A2_precisions.csv", algorithms=
     result_df.sort_values(by=["fid", "iid", "rep", "budget"], inplace=True)
     result_df.to_csv(output_file, index=False)
     return result_df
+
+# Function that creates the A2_precisions.csv file from the run data.
+def extract_a2_precisions_affine(
+        base_dir, output_file="A2_precisions_affine.csv", algorithms=None, budgets=None, fids=None, max_evals=1000,
+        dim=5, lower_bound=-5, upper_bound=5):
+    print(f"Extracting A2 affine precisions from {base_dir} with max_evals={max_evals}...")
+
+    if algorithms is None:
+        algorithms = ["BFGS", "DE", "MLSL", "Non-elitist", "PSO", "Elitist"]
+    if budgets is None:
+        budgets = [50*i for i in range(1, 21)]
+
+    # If not provided, use your described fid range
+    if fids is None:
+        fids = range(1121, 1166)
+    fids_set = set(fids)
+
+    allowed_types = {"1to5", "6to7", "1to7"}
+    x_cols = [f"x{i}" for i in range(dim)]
+
+    results = []
+
+    for algo in algorithms:
+        for budget in budgets:
+            print(f"Processing algorithm={algo}, budget={budget}...")
+            outer_folder = os.path.join(base_dir, f"A2_{algo}_B{budget}_5D")
+            if not os.path.isdir(outer_folder):
+                print(f"Directory not found: {outer_folder}")
+                continue
+
+            for inner in os.listdir(outer_folder):
+                inner_path = os.path.join(outer_folder, inner)
+                if not os.path.isdir(inner_path):
+                    continue
+
+                # Expect: data_f{fid}_affine_test_problem_{type}_{inst}
+                if not inner.startswith("data_f"):
+                    continue
+
+                parts = inner.split("_")
+                # Example parts:
+                # ["data", "f1121", "affine", "test", "problem", "1to5", "0"]
+                if len(parts) != 7:
+                    continue
+                if parts[0] != "data" or not parts[1].startswith("f"):
+                    continue
+                if parts[2:5] != ["affine", "test", "problem"]:
+                    continue
+
+                fid_str = parts[1][1:]  # after 'f'
+                if not fid_str.isdigit():
+                    continue
+                fid = int(fid_str)
+                if fid not in fids_set:
+                    continue
+
+                combo_type = parts[5]
+                if combo_type not in allowed_types:
+                    continue
+
+                inst_str = parts[6]
+                if not inst_str.isdigit():
+                    continue
+                # inst_id = int(inst_str)  # intentionally ignored
+
+                file_path = os.path.join(inner_path, f"IOHprofiler_f{fid}_DIM5.dat")
+                if not os.path.isfile(file_path):
+                    continue
+
+                try:
+                    df = pd.read_csv(file_path, delim_whitespace=True, comment="%")
+                    df["evaluations"] = pd.to_numeric(df["evaluations"], errors="coerce")
+                    df["raw_y"] = pd.to_numeric(df["raw_y"], errors="coerce")
+                    df["rep"] = pd.to_numeric(df["rep"], errors="coerce", downcast="integer")
+
+                    for col in x_cols:
+                        if col in df.columns:
+                            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+                    df = df.dropna(subset=["evaluations", "raw_y", "rep"] + x_cols)
+                except Exception as e:
+                    print(f"Failed to read {file_path}: {e}")
+                    continue
+
+                for rep, group in df.groupby("rep"):
+                    subset = group[group["evaluations"] <= max_evals]
+                    if subset.empty:
+                        continue
+
+                    # Filter to in-bounds rows only
+                    in_bounds = subset[
+                        subset[x_cols].apply(
+                            lambda row: all(lower_bound <= row[c] <= upper_bound for c in x_cols),
+                            axis=1
+                        )
+                    ]
+                    if in_bounds.empty:
+                        continue
+
+                    best_precision = float(in_bounds["raw_y"].min())
+
+                    results.append({
+                        "fid": fid,
+                        "type": combo_type,
+                        "rep": int(rep),
+                        "budget": 50 if budget == 56 else budget,
+                        "algorithm": algo,
+                        "precision": best_precision,
+                    })
+
+    result_df = pd.DataFrame(results)
+    if result_df.empty:
+        result_df = pd.DataFrame(columns=["fid", "type", "rep", "budget", "algorithm", "precision"])
+        result_df.to_csv(output_file, index=False)
+        return result_df
+
+    # Disregard instance (folder suffix): keep best across inst 0..14
+    result_df = (
+        result_df
+        .groupby(["fid", "type", "rep", "budget", "algorithm"], as_index=False)["precision"]
+        .min()
+    )
+
+    result_df.sort_values(by=["fid", "type", "rep", "budget", "algorithm"], inplace=True)
+    result_df.to_csv(output_file, index=False)
+    return result_df
+
 
 def add_algorithm_precisions(ela_dir, precision_csv, output_dir):
     """Adds algorithm precisions to ELA feature files. Used to create the dataset with which the selection models are trained.
@@ -276,12 +497,13 @@ def normalize_test_ela(
 
     # Index columns (never scaled)
     index_cols = ["fid", "iid", "rep", "high_level_category"]
+    algo_cols = ["BFGS", "DE", "Elitist", "MLSL", "Non-elitist", "PSO"]
     all_cols = df_train.columns.tolist()
 
     # Determine which columns to normalize
     if norm_ranges is None:
         # Backwards-compatible behaviour: scale all non-index columns
-        feature_cols = [col for col in df_train.columns if col not in index_cols]
+        feature_cols = [col for col in df_train.columns if col not in index_cols and col not in algo_cols]
     else:
         norm_cols = []
         for start_col, end_col in norm_ranges:
@@ -438,9 +660,9 @@ def aggregate_precision_by_budget_algorithm(
     return result
 
 if __name__ == "__main__":
-    budgets = [50*i for i in range(1, 21)]
+    budgets = [50*i for i in range(2, 21)]
     # df = pd.read_csv("../data/A2_precisions_normalized.csv")
-
+    
     # df_best = (
     #     df
     #     .groupby(["fid", "iid", "rep", "budget"], as_index=False)
@@ -448,7 +670,18 @@ if __name__ == "__main__":
     # )
 
     # df_best.to_csv("../data/A2_best_normalized_precisions.csv", index=False)
-    aggregate_precision_by_budget_algorithm(
-        pd.read_csv("../data/A2_precisions.csv"),
-        "A2_aggregated_precisions_by_budget_algorithm_nonElitist.csv"
-    )
+    # for budget in budgets:
+    #     normalize_test_ela(
+    #         f"../data/ela_with_precisions/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv",
+    #         f"../data/raw_ela_data/A1_data_ela_test/A1_B{budget}_5D_ela.csv",
+    #         f"../data/ela_nomalized/A1_data_ela_test2/A1_B{budget}_5D_ela.csv",
+    #         norm_ranges=[("ela_distr.skewness", "nbc.nb_fitness.cor")]
+    #     )
+    # process_ioh_data_affine("../data/run_data_5D/A1_data_5D_affine_test")
+    # with warnings.catch_warnings():
+    #     warnings.simplefilter("ignore", category=FutureWarning)
+    #     extract_a2_precisions_affine(
+    #         "../data/run_data_5D/A2_data_5D_affine_test",
+    #         output_file="../data/A2_precisions_affine_test.csv",
+    #         max_evals=1000
+    #     )
