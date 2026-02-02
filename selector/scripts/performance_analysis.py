@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from scipy.stats import permutation_test
 
-sbs_sum =  1688.1819# 1836.7794 for classic test data
+sbs_sum =  568.85 # 515.87  For affine, 6 to 7 # 603.455 for affine, 1 to 5 # 1688.1819 for affine across all # 1836.7794 for classic test data
 sum_best_switching = 1254.1039
 
 
@@ -58,6 +58,11 @@ if __name__== "__main__":
         lambda x: pd.to_numeric(x, errors='coerce')
     )
 
-    # Print sum of precisions of BFGS, 650
+    df = df[df["type"]=="1to7"]
+
+    # # Print sum of precisions of BFGS, 650
     print_performances(df)
+
+    # df_prec_sbs = df_prec[(df_prec["type"]=="1to7") & (df_prec["budget"]==650) & (df_prec["algorithm"]=="BFGS")]
+    # print(df_prec_sbs["precision"].astype(float).sum())
     

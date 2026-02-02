@@ -1,0 +1,193 @@
+-Random combinations of instances across all fids
+-Three groups: Instances 1 to 5, 6 and 7, 1 to 7
+-For each group: 15 random combinations of instances, weigts and locations of the optimum
+-For each combination: 20 runs -> 900 runs overall in the test set
+-Selector trained on classic BBOB functions, instances 1 to 5, as before
+
+-Problem: Functions seem to be hard to optimize: SBS precision 1688, VBS precision 1667 (a really small gap). Performances across all three groups:
+
+SBS precisions: 1688.1819
+VBS total precision: 1667.6571200199
+Selector total precision: 1690.5138738109
+Selector closed gap: -0.11361748155940489
+Static budget 50 total precision: 1688.4644957092
+Static budget 50 closed gap: -0.013768513449303176
+Static budget 100 total precision: 1692.4984266389001
+Static budget 100 closed gap: -0.21030805899430924
+Static budget 150 total precision: 1700.2016148003
+Static budget 150 closed gap: -0.5856196661768709
+Static budget 200 total precision: 1698.0159912505999
+Static budget 200 closed gap: -0.4791326026459033
+Static budget 250 total precision: 1691.9750839886
+Static budget 250 closed gap: -0.1848099707903212
+Static budget 300 total precision: 1691.5164011392
+Static budget 300 closed gap: -0.16246221116294685
+Static budget 350 total precision: 1690.9995576228
+Static budget 350 closed gap: -0.13728077112309406
+Static budget 400 total precision: 1689.3093225317
+Static budget 400 closed gap: -0.054929823013598826
+Static budget 450 total precision: 1688.8427968128
+Static budget 450 closed gap: -0.03219994628155947
+Static budget 500 total precision: 1687.8339117665
+Static budget 500 closed gap: 0.0169545414780287
+Static budget 550 total precision: 1689.6430620127
+Static budget 550 closed gap: -0.07119014255532578
+Static budget 600 total precision: 1688.9244900774
+Static budget 600 closed gap: -0.0361801723633514
+Static budget 650 total precision: 1688.0980231344001
+Static budget 650 closed gap: 0.004086614603480689
+Static budget 700 total precision: 1686.8924469975
+Static budget 700 closed gap: 0.06282420585020984
+Static budget 750 total precision: 1688.9410888534
+Static budget 750 closed gap: -0.03698889119084825
+Static budget 800 total precision: 1688.9476695858998
+Static budget 800 closed gap: -0.037309514968843556
+Static budget 850 total precision: 1689.587612139
+Static budget 850 closed gap: -0.06848853631380267
+Static budget 900 total precision: 1689.9333468995999
+Static budget 900 closed gap: -0.08533328499978925
+Static budget 950 total precision: 1689.2893702353
+Static budget 950 closed gap: -0.05395771532624609
+Static budget 1000 total precision: 1690.3381195744
+Static budget 1000 closed gap: -0.1050544549803003
+
+Performance first group (random combinations of instances 1 to 5):
+
+SBS precisions: 603.455
+VBS total precision: 586.943976745
+Selector total precision: 604.5663892192999
+Selector closed gap: -0.06731195287750147
+Static budget 50 total precision: 605.1793814821999
+Static budget 50 closed gap: -0.10443819595964031
+Static budget 100 total precision: 605.2316751809999
+Static budget 100 closed gap: -0.10760539510849679
+Static budget 150 total precision: 606.5386764959999
+Static budget 150 closed gap: -0.18676471157328212
+Static budget 200 total precision: 605.8960892999
+Static budget 200 closed gap: -0.14784603365880195
+Static budget 250 total precision: 604.4326982887001
+Static budget 250 closed gap: -0.05921488169450359
+Static budget 300 total precision: 604.4310485101
+Static budget 300 closed gap: -0.059114961866727905
+Static budget 350 total precision: 604.7475413683
+Static budget 350 closed gap: -0.07828354114324719
+Static budget 400 total precision: 603.8799368684
+Static budget 400 closed gap: -0.025736555623304434
+Static budget 450 total precision: 603.6920451859
+Static budget 450 closed gap: -0.014356783479680259
+Static budget 500 total precision: 603.2541597891
+Static budget 500 closed gap: 0.012164007511724747
+Static budget 550 total precision: 604.4928730706
+Static budget 550 closed gap: -0.06285940335561402
+Static budget 600 total precision: 603.9987592089999
+Static budget 600 closed gap: -0.03293310175886231
+Static budget 650 total precision: 603.1640954633
+Static budget 650 closed gap: 0.01761880727846225
+Static budget 700 total precision: 602.4644260489999
+Static budget 700 closed gap: 0.059994703883669016
+Static budget 750 total precision: 604.0754916979
+Static budget 750 closed gap: -0.0375804508489245
+Static budget 800 total precision: 604.0989349138999
+Static budget 800 closed gap: -0.03900030324921831
+Static budget 850 total precision: 604.2024300104
+Static budget 850 closed gap: -0.0452685456774232
+Static budget 900 total precision: 604.4837902505001
+Static budget 900 closed gap: -0.06230929692310182
+Static budget 950 total precision: 604.0174684742001
+Static budget 950 closed gap: -0.034066239597216504
+Static budget 1000 total precision: 604.7237365382
+Static budget 1000 closed gap: -0.07684178736867485
+
+Performance first group (random combinations of instances 6 to 7):
+
+SBS precisions: 515.87
+VBS total precision: 513.8651861548
+Selector total precision: 516.6232336642
+Selector closed gap: -0.375712521141767
+Static budget 50 total precision: 517.0240627564001
+Static budget 50 closed gap: -0.5756458432104185
+Static budget 100 total precision: 517.0311819779
+Static budget 100 closed gap: -0.5791969068251102
+Static budget 150 total precision: 520.8429495307
+Static budget 150 closed gap: -2.4805043832904285
+Static budget 200 total precision: 519.9760049598
+Static budget 200 closed gap: -2.048072926885784
+Static budget 250 total precision: 517.2952453323
+Static budget 250 closed gap: -0.7109115570567327
+Static budget 300 total precision: 516.9896542287
+Static budget 300 closed gap: -0.5584828892621266
+Static budget 350 total precision: 516.7191360299
+Static budget 350 closed gap: -0.423548566333499
+Static budget 400 total precision: 516.2954373706
+Static budget 400 closed gap: -0.21220791726801502
+Static budget 450 total precision: 516.167147853
+Static budget 450 closed gap: -0.14821717922159874
+Static budget 500 total precision: 515.7797631669
+Static budget 500 closed gap: 0.04501008076936436
+Static budget 550 total precision: 516.1266735479
+Static budget 550 closed gap: -0.12802861897356857
+Static budget 600 total precision: 516.0223340268999
+Static budget 600 closed gap: -0.07598412554093983
+Static budget 650 total precision: 515.8811521775999
+Static budget 650 closed gap: -0.005562699812060658
+Static budget 700 total precision: 515.6668349692
+Static budget 700 closed gap: 0.10133860123046971
+Static budget 750 total precision: 515.8596571145
+Static budget 750 closed gap: 0.005159025375227674
+Static budget 800 total precision: 515.8868652923
+Static budget 800 closed gap: -0.008412398158721406
+Static budget 850 total precision: 516.3347302888
+Static budget 850 closed gap: -0.2318072024056611
+Static budget 900 total precision: 516.2665845502
+Static budget 900 closed gap: -0.1978161469452852
+Static budget 950 total precision: 516.0708679248
+Static budget 950 closed gap: -0.1001928060707274
+Static budget 1000 total precision: 516.3891061244
+Static budget 1000 closed gap: -0.2589298381207926
+
+Performance first group (random combinations of instances 1 to 7):
+
+SBS precisions: 568.85
+VBS total precision: 566.8479571201
+Selector total precision: 569.3242509274
+Selector closed gap: -0.23688350142815065
+Static budget 50 total precision: 566.2610514706
+Static budget 50 closed gap: 1.2931533861698588
+Static budget 100 total precision: 570.2355694800001
+Static budget 100 closed gap: -0.6920778240620142
+Static budget 150 total precision: 572.8199887736
+Static budget 150 closed gap: -1.982968903142674
+Static budget 200 total precision: 572.1438969909
+Static budget 200 closed gap: -1.6452679530342549
+Static budget 250 total precision: 570.2471403676
+Static budget 250 closed gap: -0.6978573644085482
+Static budget 300 total precision: 570.0956984004
+Static budget 300 closed gap: -0.6222136463241891
+Static budget 350 total precision: 569.5328802246
+Static budget 350 closed gap: -0.3410917076032387
+Static budget 400 total precision: 569.1339482927001
+Static budget 400 closed gap: -0.14182927626118125
+Static budget 450 total precision: 568.9836037739
+Static budget 450 closed gap: -0.06673372245984047
+Static budget 500 total precision: 568.7999888104999
+Static budget 500 closed gap: 0.024980079099294634
+Static budget 550 total precision: 569.0235153942001
+Static budget 550 closed gap: -0.0866691697476248
+Static budget 600 total precision: 568.9033968415001
+Static budget 600 closed gap: -0.026671177743589892
+Static budget 650 total precision: 569.0527754935
+Static budget 650 closed gap: -0.10128429092892786
+Static budget 700 total precision: 568.7611859793001
+Static budget 700 closed gap: 0.044361697539853154
+Static budget 750 total precision: 569.005940041
+Static budget 750 closed gap: -0.07789046007236045
+Static budget 800 total precision: 568.9618693796999
+Static budget 800 closed gap: -0.05587761422246963
+Static budget 850 total precision: 569.0504518398
+Static budget 850 closed gap: -0.1001236496043216
+Static budget 900 total precision: 569.1829720989
+Static budget 900 closed gap: -0.16631616747219546
+Static budget 950 total precision: 569.2010338363
+Static budget 950 closed gap: -0.17533782109476478
+Static budget 1000 total precision: 569.2252769117999
+Static budget 1000 closed gap: -0.187446990055803
