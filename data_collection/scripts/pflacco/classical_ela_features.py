@@ -637,9 +637,9 @@ def calculate_information_content(
 
       m0 = M[epsilon == 0]
       eps05 = np.where(M > ic_info_sensitivity * m0)[0]
-      print(f'eps05: {eps05}, m0: {m0}')
+      # print(f'eps05: {eps05}, m0: {m0}')
       eps05 = np.log(epsilon[eps05].max()) / np.log(10) if len(eps05) > 0 else None
-      print(f'eps05: {eps05}, m0: {m0}')
+      # print(f'eps05: {eps05}, m0: {m0}')
 
       return {
             'ic.h_max': H.max(),

@@ -24,6 +24,8 @@ for i in $(seq 1 20); do
   BUDGETS+=($((50 * i)))
 done
 
+BUDGETS=(50)
+
 # # === Loop over budgets and submit jobs ===
 for BUDGET in "${BUDGETS[@]}"; do
 

@@ -6,6 +6,8 @@ import os
 import warnings
 import sys
 import argparse
+import ioh  # type: ignore
+from ioh import ProblemClass
 
 # Add pflacco module path if needed
 sys.path.append(os.path.join(os.path.dirname(__file__), 'pflacco'))
@@ -18,6 +20,21 @@ from classical_ela_features import ( # type: ignore
     calculate_information_content,
     calculate_nbc
 )
+
+from sampling import create_initial_sample  # type: ignore
+
+def high_level_category_from_fid(fid: int):
+    if fid in [1, 2, 3, 4, 5]:
+        return 1
+    elif fid in [6, 7, 8, 9]:
+        return 2
+    elif fid in [10, 11, 12, 13, 14]:
+        return 3
+    elif fid in [15, 16, 17, 18, 19]:
+        return 4
+    elif fid in [20, 21, 22, 23, 24]:
+        return 5
+    return None
 
 def calculate_ela_features(budget):
     base_folder = "../data/run_data_5D/A1_data_5D_affine_test"   
@@ -147,6 +164,73 @@ def calculate_ela_features(budget):
 
     print(f"Completed processing for budget: {budget}")
 
+def create_lhs_samples():
+    df_samples = []
+    dim = 5
+    for fid in range(1, 25):
+        for iid in range(6, 8):
+            for rep in range(20):
+                print(f"Creating samples for fid: {fid}, iid: {iid}, rep: {rep}")
+                np.random.seed(rep)
+                problem = ioh.get_problem(fid, iid, 5, problem_class=ProblemClass.BBOB)
+                X = create_initial_sample(dim=dim, n=150, lower_bound = [-5]*dim, upper_bound = [5]*dim, sample_type='lhs', seed=rep)
+                y = X.apply(lambda x: problem(x), axis=1)
+                # Store samples a csv, each row (fid, iid, rep, eval) with eval=1,...,150, append all this to df_samples
+                df_samples.append(pd.DataFrame({
+                    "fid": fid,
+                    "iid": iid,
+                    "rep": rep,
+                    "eval": np.arange(1, 151),
+                    "x0": X["x0"],
+                    "x1": X["x1"],
+                    "x2": X["x2"],
+                    "x3": X["x3"],
+                    "x4": X["x4"],
+                    "true_y": y
+                }))
+    df_samples = pd.concat(df_samples, ignore_index=True)
+    if not os.path.exists("../data/lhs_samples"):
+        os.makedirs("../data/lhs_samples")
+    df_samples.to_csv("../data/lhs_samples/samples_test.csv", index=False)
+
+def calculate_ela_from_lhs():
+    df_samples = pd.read_csv("../data/lhs_samples/samples_test.csv")
+    output_path = "../data/ela_from_lhs/ela_test.csv"
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    res = []
+
+    for (fid, iid, rep), group in df_samples.groupby(["fid", "iid", "rep"], sort=True):
+        print(f"Calculating ELA for fid: {fid}, iid: {iid}, rep: {rep}")
+        group = group.reset_index(drop=True)
+
+        # Use the column names from your LHS CSV:
+        X = group[["x0", "x1", "x2", "x3", "x4"]].to_numpy()
+        y = np.asarray(group["true_y"].values, dtype=float).flatten()
+
+        features = {}
+        features["fid"] = fid
+        features["iid"] = iid
+        features["rep"] = rep
+        features["high_level_category"] = high_level_category_from_fid(int(fid))
+
+        features.update(calculate_ela_distribution(X, y))
+        features.update(calculate_ela_meta(X, y))
+        features.update(calculate_dispersion(X, y))
+        features.update(calculate_information_content(X, y))
+        features.update(calculate_nbc(X, y))
+
+        res.append(features)
+
+    df_res = pd.DataFrame(res)
+
+    # Force column order: fid, iid, rep first, then high_level_category, then the rest
+    first_cols = ["fid", "iid", "rep", "high_level_category"]
+    other_cols = [c for c in df_res.columns if c not in first_cols]
+    df_res = df_res[first_cols + other_cols]
+
+    df_res.to_csv(output_path, index=False)
+    return df_res
+
 # Function that adds the new "internal" features
 def append_standard_deviation_stats(budget, ela_path, raw_data_path, output_path):
     df_ela = pd.read_csv(ela_path)
@@ -248,11 +332,11 @@ def make_intervals(n: float):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--budget", type=int, required=True, help="Budget to process")
-    args = parser.parse_args()
-    budget = args.budget
-    calculate_ela_features(budget=budget)
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("--budget", type=int, required=True, help="Budget to process")
+    # args = parser.parse_args()
+    # budget = args.budget
+    # calculate_ela_from_lhs()
     # # with warnings.catch_warnings():
     # #     warnings.filterwarnings("ignore", category=RuntimeWarning)
     # #     warnings.filterwarnings("ignore", category=UserWarning)
@@ -266,4 +350,5 @@ if __name__ == "__main__":
     #     raw_data_path = f"../data/run_data_5D/A1_data_5D_test/A1_B{budget}_5D.csv",
     #     output_path = f"../data/ela_with_cma_std/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv"
     # )
+    create_lhs_samples()
   

@@ -247,7 +247,7 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False):
 
     logger = ioh.logger.Analyzer(
         triggers=[trigger],
-        folder_name=f'../data/run_data_5D/A2_data_5D_elitistA1/A2_{algname}_B{budget_factor}_{dim}D',
+        folder_name=f'../data/run_data_5D/A2_data_5D_scratch_850_test/A2_{algname}_B{budget_factor}_{dim}D',
         algorithm_name=algname,
         store_positions=True,
     )
@@ -255,7 +255,7 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False):
     logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])
 
     for fid in range(1, 25):
-        for iid in range(1, 6):
+        for iid in range(6, 8):
 
             problem = ioh.get_problem(fid, iid, dim, ProblemClass.BBOB)
     
@@ -274,10 +274,10 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False):
                         # Run A2 directly from scratch without CMA-ES warm-starting
                         algorithm = A2(problem, verbose=False, seed=np.random.get_state())
                         # Run for 1000 evals
-                        algorithm.set_params({'budget': 1000})
+                        algorithm.set_params({'budget': 850})
                         algorithm.set_hyperparams({})
                         def stopping_criteria():
-                            return problem.state.evaluations >= 1000
+                            return problem.state.evaluations >= 850
                         
                         algorithm.set_stopping_criteria(stopping_criteria)
                         algorithm.run()
@@ -286,7 +286,7 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False):
                             None, 
                             problem, 
                             dim, 
-                            budget= 1000,
+                            budget= 850,
                             active=True,
                             bound_correction='saturate',
                             sigma0 = 2.0,
@@ -314,7 +314,7 @@ def collect_all(x = None):
     
     # Then collect A2 data
     for A2, algname in zip([MLSL, DE, PSO, BFGS, None, None], ["MLSL", "DE", "PSO", "BFGS", "Non-elitist", "Elitist"]):
-        record_A2_runs_on_affine(budget_factor, dim, A2, algname)
+        collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=True)
 
 
     # Only run BFGS

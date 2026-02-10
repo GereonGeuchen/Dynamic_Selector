@@ -436,7 +436,7 @@ def normalize_ela_with_precisions(
     df = pd.read_csv(path_in)
 
     # Columns that must NOT be normalized
-    index_cols = ["fid", "iid", "rep", "high_level_category"]
+    index_cols = ["fid", "iid", "high_level_category"]
     algo_cols = ["BFGS", "DE", "Elitist", "MLSL", "Non-elitist", "PSO"]
 
     cols = list(df.columns)
@@ -659,29 +659,90 @@ def aggregate_precision_by_budget_algorithm(
     result.to_csv(output_path, index=False)
     return result
 
-if __name__ == "__main__":
-    budgets = [50*i for i in range(2, 21)]
-    # df = pd.read_csv("../data/A2_precisions_normalized.csv")
-    
-    # df_best = (
-    #     df
-    #     .groupby(["fid", "iid", "rep", "budget"], as_index=False)
-    #     .agg(best_precision=("precision", "min"))
-    # )
+def aggregate_precision_by_budget_algorithm_median(
+    input_df: pd.DataFrame,
+    output_path: str
+):
 
-    # df_best.to_csv("../data/A2_best_normalized_precisions.csv", index=False)
-    # for budget in budgets:
-    #     normalize_test_ela(
-    #         f"../data/ela_with_precisions/A1_data_5D/A1_B{budget}_5D_ela_with_state.csv",
-    #         f"../data/raw_ela_data/A1_data_ela_test/A1_B{budget}_5D_ela.csv",
-    #         f"../data/ela_nomalized/A1_data_ela_test2/A1_B{budget}_5D_ela.csv",
-    #         norm_ranges=[("ela_distr.skewness", "nbc.nb_fitness.cor")]
-    #     )
-    # process_ioh_data_affine("../data/run_data_5D/A1_data_5D_affine_test")
-    # with warnings.catch_warnings():
-    #     warnings.simplefilter("ignore", category=FutureWarning)
-    #     extract_a2_precisions_affine(
-    #         "../data/run_data_5D/A2_data_5D_affine_test",
-    #         output_file="../data/A2_precisions_affine_test.csv",
-    #         max_evals=1000
-    #     )
+    df_agg = (
+        input_df
+        .groupby(["fid", "iid", "algorithm", "budget"], as_index=False)
+        .agg(
+            precision=("precision", "median")
+        )
+    )
+
+    df_agg.to_csv(output_path, index=False)
+
+def aggregate_ela_median(
+    input_df: pd.DataFrame,
+    output_path: str,
+    index_cols=["fid", "iid", "high_level_category"]
+):
+
+    feature_cols = [c for c in input_df.columns if c not in index_cols]
+
+    df_agg = (
+        input_df
+        .groupby(index_cols, as_index=False)
+        .agg({col: "median" for col in feature_cols})
+    )
+
+    # Drop rep-column
+    df_agg = df_agg.drop(columns=["rep"], errors="ignore")
+
+    df_agg.to_csv(output_path, index=False)
+
+def label_lhs_ela_with_precisions(
+        ela_csv_path: str,
+    precision_csv_path: str,
+    out_csv_path: str,
+    ):
+    """
+    Loads an ELA CSV with one row per (fid, iid), and a precision CSV with rows
+    (fid, iid, algorithm, budget, precision). Ignores budget, pivots algorithm
+    into columns, and merges onto the ELA rows.
+
+    Output columns = ELA columns + one column per algorithm (e.g., BFGS, DE, PSO, ...).
+    """
+    df_ela = pd.read_csv(ela_csv_path)
+    df_prec = pd.read_csv(precision_csv_path)
+
+    # Pivot precision file: (fid, iid) index, algorithm columns, precision values
+    df_prec_wide = (
+        df_prec
+        .pivot_table(
+            index=["fid", "iid"],
+            columns="algorithm",
+            values="precision",
+        )
+        .reset_index()
+    )
+
+    # Merge onto ELA
+    df_labeled = df_ela.merge(
+        df_prec_wide,
+        on=["fid", "iid"],
+        how="left"
+    )
+
+    # Write result
+    os.makedirs(os.path.dirname(out_csv_path), exist_ok=True)
+    df_labeled.to_csv(out_csv_path, index=False)
+
+if __name__ == "__main__":
+    # label_lhs_ela_with_precisions(
+    #     ela_csv_path="../data/ela_from_lhs/ela_median.csv",
+    #     precision_csv_path="../data/A2_precisions_scratch_850_median.csv",
+    #     out_csv_path="../data/ela_with_precisions/ela_lhs_with_precisions.csv",
+    # )
+    # normalize_ela_with_precisions(
+    #     path_in="../data/ela_with_precisions/ela_lhs_with_precisions.csv",
+    #     path_out="../data/ela_normalized_with_precisions/ela_lhs_with_precisions.csv",
+    # )
+    extract_a2_precisions(
+        base_dir="../data/run_data_5D/A2_data_5D_scratch_850_test",
+        output_file="../data/A2_precisions_scratch_850_test.csv",
+        budgets = [50],
+        max_evals=850
+    )
