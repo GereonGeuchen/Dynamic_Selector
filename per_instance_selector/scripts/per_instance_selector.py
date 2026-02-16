@@ -1,13 +1,15 @@
 # Simulation of the per-instance selector
 
+from logging import warning
 import os
 import pandas as pd
 import joblib
+import warnings
 
 
 ALGORITHMS = ["BFGS", "DE", "Elitist", "MLSL", "Non-elitist", "PSO"]
-ELA_PATH = "../data/ela_lhs_test.csv"
-MODEL_DIRECTORY = "../data/models/per_instance_selector_models_trained"
+ELA_PATH = "../data/ela_lhs_150_all_reps_test.csv"
+MODEL_DIRECTORY = "../data/models/per_instance_selector_models_150_all_reps_trained"
 PRECISION_PATH = "../data/A2_precisions_scratch_850_test.csv"
 OUTPUT_PATH = "../data/results"
 
@@ -45,7 +47,7 @@ def main():
     results = []
     for index, row in ela_data.iterrows():
         fid, iid, rep = row["fid"], row["iid"], row["rep"]
-        if rep != 0: continue
+        # if rep != 0: continue
         features = row.drop(["fid", "iid", "rep", "high_level_category"]).values.reshape(1, -1)
         
         precision_values = {algo: precision_data[(precision_data["fid"] == fid) & (precision_data["iid"] == iid) & (precision_data["rep"] == rep)
@@ -72,8 +74,10 @@ def main():
 
         # Save results to a CSV file
         results_df = pd.DataFrame(results)
-        output_file = os.path.join(OUTPUT_PATH, "per_instance_selector_results_1_rep_per_iid.csv")
+        output_file = os.path.join(OUTPUT_PATH, "per_instance_selector_results_150_all_reps.csv")
         results_df.to_csv(output_file, index=False)
 
 if __name__ == "__main__":
-    main()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        main()
