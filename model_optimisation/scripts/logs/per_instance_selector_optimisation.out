@@ -1,0 +1,108 @@
+[INFO][abstract_initial_design.py:87] Reducing the number of initial configurations from 50 to 25 (max_ratio == 0.25).
+[INFO][abstract_initial_design.py:139] Using 25 initial design configurations and 0 additional configurations.
+[INFO][abstract_intensifier.py:307] Using only one seed for deterministic scenario.
+[INFO][abstract_intensifier.py:517] Added config c4a454 as new incumbent because there are no incumbents yet.
+[INFO][abstract_intensifier.py:596] Added config 0affcf and rejected config c4a454 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 01b0f4 and rejected config 0affcf as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config a40895 and rejected config 01b0f4 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 43cccb and rejected config a40895 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 50 trials.
+[INFO][abstract_intensifier.py:596] Added config 4001fb and rejected config 43cccb as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 100 trials.
+[INFO][smbo.py:335] Configuration budget is exhausted:
+[INFO][smbo.py:336] --- Remaining wallclock time: inf
+[INFO][smbo.py:337] --- Remaining cpu time: inf
+[INFO][smbo.py:338] --- Remaining trials: 0
+[BFGS] Saved untrained model to ../data/models/untrained_models/per_instance_selector_models_150_all_reps_untrained/BFGS_rf_untrained.pkl
+[BFGS] Saved trained model to ../data/models/tuned_models/per_instance_selector_models_150_all_reps_trained/BFGS_rf_trained.pkl
+[INFO][abstract_initial_design.py:87] Reducing the number of initial configurations from 50 to 25 (max_ratio == 0.25).
+[INFO][abstract_initial_design.py:139] Using 25 initial design configurations and 0 additional configurations.
+[INFO][abstract_intensifier.py:307] Using only one seed for deterministic scenario.
+[INFO][abstract_intensifier.py:517] Added config c4a454 as new incumbent because there are no incumbents yet.
+[INFO][abstract_intensifier.py:596] Added config 01b0f4 and rejected config c4a454 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 49550d and rejected config 01b0f4 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 3b393b and rejected config 49550d as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 50 trials.
+[INFO][abstract_intensifier.py:596] Added config c5f8fb and rejected config 3b393b as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 100 trials.
+[INFO][smbo.py:335] Configuration budget is exhausted:
+[INFO][smbo.py:336] --- Remaining wallclock time: inf
+[INFO][smbo.py:337] --- Remaining cpu time: inf
+[INFO][smbo.py:338] --- Remaining trials: 0
+[DE] Saved untrained model to ../data/models/untrained_models/per_instance_selector_models_150_all_reps_untrained/DE_rf_untrained.pkl
+[DE] Saved trained model to ../data/models/tuned_models/per_instance_selector_models_150_all_reps_trained/DE_rf_trained.pkl
+[INFO][abstract_initial_design.py:87] Reducing the number of initial configurations from 50 to 25 (max_ratio == 0.25).
+[INFO][abstract_initial_design.py:139] Using 25 initial design configurations and 0 additional configurations.
+[INFO][abstract_intensifier.py:307] Using only one seed for deterministic scenario.
+[INFO][abstract_intensifier.py:517] Added config c4a454 as new incumbent because there are no incumbents yet.
+[INFO][abstract_intensifier.py:596] Added config 01b0f4 and rejected config c4a454 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 8b738e and rejected config 01b0f4 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config a40895 and rejected config 8b738e as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 6aab7b and rejected config a40895 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 43cccb and rejected config 6aab7b as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 50 trials.
+[INFO][abstract_intensifier.py:596] Added config 720b79 and rejected config 43cccb as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 8f4d15 and rejected config 720b79 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 30d157 and rejected config 8f4d15 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 8729d3 and rejected config 30d157 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 100 trials.
+[INFO][smbo.py:335] Configuration budget is exhausted:
+[INFO][smbo.py:336] --- Remaining wallclock time: inf
+[INFO][smbo.py:337] --- Remaining cpu time: inf
+[INFO][smbo.py:338] --- Remaining trials: 0
+[Elitist] Saved untrained model to ../data/models/untrained_models/per_instance_selector_models_150_all_reps_untrained/Elitist_rf_untrained.pkl
+[Elitist] Saved trained model to ../data/models/tuned_models/per_instance_selector_models_150_all_reps_trained/Elitist_rf_trained.pkl
+[INFO][abstract_initial_design.py:87] Reducing the number of initial configurations from 50 to 25 (max_ratio == 0.25).
+[INFO][abstract_initial_design.py:139] Using 25 initial design configurations and 0 additional configurations.
+[INFO][abstract_intensifier.py:307] Using only one seed for deterministic scenario.
+[INFO][abstract_intensifier.py:517] Added config c4a454 as new incumbent because there are no incumbents yet.
+[INFO][abstract_intensifier.py:596] Added config 0affcf and rejected config c4a454 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 01b0f4 and rejected config 0affcf as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config a40895 and rejected config 01b0f4 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 6aab7b and rejected config a40895 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 95773d and rejected config 6aab7b as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 50 trials.
+[INFO][abstract_intensifier.py:596] Added config 8c9d1f and rejected config 95773d as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 8c40b3 and rejected config 8c9d1f as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 100 trials.
+[INFO][smbo.py:335] Configuration budget is exhausted:
+[INFO][smbo.py:336] --- Remaining wallclock time: inf
+[INFO][smbo.py:337] --- Remaining cpu time: inf
+[INFO][smbo.py:338] --- Remaining trials: 0
+[MLSL] Saved untrained model to ../data/models/untrained_models/per_instance_selector_models_150_all_reps_untrained/MLSL_rf_untrained.pkl
+[MLSL] Saved trained model to ../data/models/tuned_models/per_instance_selector_models_150_all_reps_trained/MLSL_rf_trained.pkl
+[INFO][abstract_initial_design.py:87] Reducing the number of initial configurations from 50 to 25 (max_ratio == 0.25).
+[INFO][abstract_initial_design.py:139] Using 25 initial design configurations and 0 additional configurations.
+[INFO][abstract_intensifier.py:307] Using only one seed for deterministic scenario.
+[INFO][abstract_intensifier.py:517] Added config c4a454 as new incumbent because there are no incumbents yet.
+[INFO][abstract_intensifier.py:596] Added config 01b0f4 and rejected config c4a454 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 6aab7b and rejected config 01b0f4 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config db3738 and rejected config 6aab7b as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 50 trials.
+[INFO][smbo.py:327] Finished 100 trials.
+[INFO][smbo.py:335] Configuration budget is exhausted:
+[INFO][smbo.py:336] --- Remaining wallclock time: inf
+[INFO][smbo.py:337] --- Remaining cpu time: inf
+[INFO][smbo.py:338] --- Remaining trials: 0
+[Non-elitist] Saved untrained model to ../data/models/untrained_models/per_instance_selector_models_150_all_reps_untrained/Non-elitist_rf_untrained.pkl
+[Non-elitist] Saved trained model to ../data/models/tuned_models/per_instance_selector_models_150_all_reps_trained/Non-elitist_rf_trained.pkl
+[INFO][abstract_initial_design.py:87] Reducing the number of initial configurations from 50 to 25 (max_ratio == 0.25).
+[INFO][abstract_initial_design.py:139] Using 25 initial design configurations and 0 additional configurations.
+[INFO][abstract_intensifier.py:307] Using only one seed for deterministic scenario.
+[INFO][abstract_intensifier.py:517] Added config c4a454 as new incumbent because there are no incumbents yet.
+[INFO][abstract_intensifier.py:596] Added config 01b0f4 and rejected config c4a454 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 8b738e and rejected config 01b0f4 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 555bc3 and rejected config 8b738e as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 6aab7b and rejected config 555bc3 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config e65e94 and rejected config 6aab7b as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 43cccb and rejected config e65e94 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 50 trials.
+[INFO][abstract_intensifier.py:596] Added config 749657 and rejected config 43cccb as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][abstract_intensifier.py:596] Added config 2cc0eb and rejected config 749657 as incumbent because it is not better than the incumbents on 1 instances: 
+[INFO][smbo.py:327] Finished 100 trials.
+[INFO][smbo.py:335] Configuration budget is exhausted:
+[INFO][smbo.py:336] --- Remaining wallclock time: inf
+[INFO][smbo.py:337] --- Remaining cpu time: inf
+[INFO][smbo.py:338] --- Remaining trials: 0
+[PSO] Saved untrained model to ../data/models/untrained_models/per_instance_selector_models_150_all_reps_untrained/PSO_rf_untrained.pkl
+[PSO] Saved trained model to ../data/models/tuned_models/per_instance_selector_models_150_all_reps_trained/PSO_rf_trained.pkl

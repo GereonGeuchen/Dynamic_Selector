@@ -14,10 +14,10 @@ from sklearn.metrics import r2_score
 
 
 # === Parameters (edit these) ===
-ela_csv_path = "../data/ela_lhs_with_precisions.csv"  # ELA + algorithm precision columns
-smac_output_dir = "smac_outputs/smac_output_lhs_r2"
-output_models_dir = "../data/models/tuned_models/per_instance_selector_models_trained"
-untrained_output_models_dir = "../data/models/untrained_models/per_instance_selector_models_untrained"
+ela_csv_path = "../data/ela_lhs_with_precisions_all_reps_150_normalized.csv"  # ELA + algorithm precision columns
+smac_output_dir = "smac_outputs/smac_output_lhs_150_all_reps_r2"
+output_models_dir = "../data/models/tuned_models/per_instance_selector_models_150_all_reps_trained"
+untrained_output_models_dir = "../data/models/untrained_models/per_instance_selector_models_150_all_reps_untrained"
 
 ALGO_COLS = ["BFGS", "DE", "Elitist", "MLSL", "Non-elitist", "PSO"]
 LOG_EPS = 1e-12
@@ -38,7 +38,7 @@ def _make_X_y_groups_for_algorithm(df: pd.DataFrame, algo: str, group_by: str = 
     y = df[algo].astype(float)
 
     # Drop identifiers and ALL algorithm targets from X
-    drop_cols = ["fid", "iid", "high_level_category"] + [c for c in ALGO_COLS if c in df.columns]
+    drop_cols = ["fid", "iid", "high_level_category", "rep"] + [c for c in ALGO_COLS if c in df.columns]
     X = df.drop(columns=[c for c in drop_cols if c in df.columns])
 
     return X, y, groups
