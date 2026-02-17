@@ -189,6 +189,9 @@ def extract_a2_precisions(base_dir, output_file="A2_precisions.csv", algorithms=
     lower_bound = -5
     upper_bound = 5
 
+    total_reps = 0
+    total_oob_reps = 0
+
     for algo in algorithms:
         for budget in budgets:
             print(f"Processing algorithm={algo}, budget={budget}...")
@@ -226,6 +229,8 @@ def extract_a2_precisions(base_dir, output_file="A2_precisions.csv", algorithms=
                         subset = group[group['evaluations'] <= max_evals]
                         if subset.empty:
                             continue
+                        
+                        total_reps += 1
 
                         # Step 2: Filter to in-bound rows only
                         x_cols = [f'x{i}' for i in range(dim)]
@@ -235,6 +240,13 @@ def extract_a2_precisions(base_dir, output_file="A2_precisions.csv", algorithms=
                                 axis=1
                             )
                         ]
+
+                        # Check if ANY evaluation in this rep violates bounds
+                        row_oob = (subset[x_cols] < lower_bound).any(axis=1) | \
+                                (subset[x_cols] > upper_bound).any(axis=1)
+
+                        if row_oob.any():
+                            total_oob_reps += 1
 
                         # Step 3: Find filtered minimum within bounds
                         min_row_filtered = in_bounds.loc[in_bounds['raw_y'].idxmin()]
@@ -251,10 +263,12 @@ def extract_a2_precisions(base_dir, output_file="A2_precisions.csv", algorithms=
                         })
 
                             
-    result_df = pd.DataFrame(results)
-    result_df.sort_values(by=["fid", "iid", "rep", "budget"], inplace=True)
-    result_df.to_csv(output_file, index=False)
-    return result_df
+    # result_df = pd.DataFrame(results)
+    # result_df.sort_values(by=["fid", "iid", "rep", "budget"], inplace=True)
+    # result_df.to_csv(output_file, index=False)
+    print(f"Total reps processed: {total_reps}")
+    print(f"Total out-of-bounds reps: {total_oob_reps}")
+    # return result_df
 
 # Function that creates the A2_precisions.csv file from the run data.
 def extract_a2_precisions_affine(
@@ -436,7 +450,7 @@ def normalize_ela_with_precisions(
     df = pd.read_csv(path_in)
 
     # Columns that must NOT be normalized
-    index_cols = ["fid", "iid", "high_level_category"]
+    index_cols = ["fid", "iid", "high_level_category", "rep"]
     algo_cols = ["BFGS", "DE", "Elitist", "MLSL", "Non-elitist", "PSO"]
 
     cols = list(df.columns)
@@ -659,7 +673,7 @@ def aggregate_precision_by_budget_algorithm(
     result.to_csv(output_path, index=False)
     return result
 
-def aggregate_precision_by_budget_algorithm_median(
+def aggregate_precision_by_budget_algorithm(
     input_df: pd.DataFrame,
     output_path: str
 ):
@@ -668,7 +682,7 @@ def aggregate_precision_by_budget_algorithm_median(
         input_df
         .groupby(["fid", "iid", "algorithm", "budget"], as_index=False)
         .agg(
-            precision=("precision", "median")
+            precision=("precision", "sum")
         )
     )
 
@@ -707,7 +721,8 @@ def label_lhs_ela_with_precisions(
     """
     df_ela = pd.read_csv(ela_csv_path)
     df_prec = pd.read_csv(precision_csv_path)
-
+    df_ela = df_ela[df_ela["rep"] == 0]
+    df_prec = df_prec[df_prec["rep"] == 0]
     # Pivot precision file: (fid, iid) index, algorithm columns, precision values
     df_prec_wide = (
         df_prec
@@ -730,19 +745,46 @@ def label_lhs_ela_with_precisions(
     os.makedirs(os.path.dirname(out_csv_path), exist_ok=True)
     df_labeled.to_csv(out_csv_path, index=False)
 
+def add_algorithm_precisions_lhs(ela_path, precision_path):
+    ela_df = pd.read_csv(ela_path)
+    prec_df = pd.read_csv(precision_path)
+    # Here, we also want to match reps, not just for rep = 0
+    # First, pivot the precision file to have algorithms as columns
+    prec_wide = (
+        prec_df.pivot_table(
+            index=["fid", "iid", "rep"],
+            columns="algorithm",
+            values="precision"
+        )
+        .reset_index()
+    )
+
+    # Merge onto ELA
+    df_labeled = ela_df.merge(
+        prec_wide,
+        on=["fid", "iid", "rep"],
+        how="left"
+    )
+
+    # Write result
+    out_path = ela_path.replace(".csv", "_with_precisions.csv")
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df_labeled.to_csv(out_path, index=False)
+
 if __name__ == "__main__":
-    # label_lhs_ela_with_precisions(
-    #     ela_csv_path="../data/ela_from_lhs/ela_median.csv",
-    #     precision_csv_path="../data/A2_precisions_scratch_850_median.csv",
-    #     out_csv_path="../data/ela_with_precisions/ela_lhs_with_precisions.csv",
+    # normalize_test_ela(
+    #     train_csv_path="../data/ela_from_lhs/ela_150.csv",
+    #     test_csv_path="../data/ela_from_lhs/ela_150_test.csv",
+    #     test_out_path="../data/ela_normalized/ela_lhs_150_all_reps_test.csv"
     # )
-    # normalize_ela_with_precisions(
-    #     path_in="../data/ela_with_precisions/ela_lhs_with_precisions.csv",
-    #     path_out="../data/ela_normalized_with_precisions/ela_lhs_with_precisions.csv",
-    # )
+
+    df = pd.read_csv("../data/A2_precisions.csv")
+    df = df[(df["algorithm"] == "BFGS") & (df["budget"] == 650)]
+    print(df["precision"].sum())
+
     extract_a2_precisions(
-        base_dir="../data/run_data_5D/A2_data_5D_scratch_850_test",
-        output_file="../data/A2_precisions_scratch_850_test.csv",
-        budgets = [50],
-        max_evals=850
+        base_dir = "../data/run_data_5D/A2_data_5D",
+        algorithms=["BFGS"],
+        budgets = [56],
+        max_evals=1000
     )

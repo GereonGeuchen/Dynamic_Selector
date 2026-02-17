@@ -247,7 +247,7 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False):
 
     logger = ioh.logger.Analyzer(
         triggers=[trigger],
-        folder_name=f'../data/run_data_5D/A2_data_5D_scratch_850_test/A2_{algname}_B{budget_factor}_{dim}D',
+        folder_name=f'../data/run_data_5D/A2_data_5D_scratch_750_test/A2_{algname}_B{budget_factor}_{dim}D',
         algorithm_name=algname,
         store_positions=True,
     )
@@ -274,10 +274,10 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False):
                         # Run A2 directly from scratch without CMA-ES warm-starting
                         algorithm = A2(problem, verbose=False, seed=np.random.get_state())
                         # Run for 1000 evals
-                        algorithm.set_params({'budget': 850})
+                        algorithm.set_params({'budget': 750})
                         algorithm.set_hyperparams({})
                         def stopping_criteria():
-                            return problem.state.evaluations >= 850
+                            return problem.state.evaluations >= 750
                         
                         algorithm.set_stopping_criteria(stopping_criteria)
                         algorithm.run()
@@ -286,7 +286,7 @@ def collect_A2(budget_factor, dim, A2, algname, run_A2_from_scratch=False):
                             None, 
                             problem, 
                             dim, 
-                            budget= 850,
+                            budget= 750,
                             active=True,
                             bound_correction='saturate',
                             sigma0 = 2.0,

@@ -173,14 +173,14 @@ def create_lhs_samples():
                 print(f"Creating samples for fid: {fid}, iid: {iid}, rep: {rep}")
                 np.random.seed(rep)
                 problem = ioh.get_problem(fid, iid, 5, problem_class=ProblemClass.BBOB)
-                X = create_initial_sample(dim=dim, n=150, lower_bound = [-5]*dim, upper_bound = [5]*dim, sample_type='lhs', seed=rep)
+                X = create_initial_sample(dim=dim, n=250, lower_bound = [-5]*dim, upper_bound = [5]*dim, sample_type='lhs', seed=rep)
                 y = X.apply(lambda x: problem(x), axis=1)
-                # Store samples a csv, each row (fid, iid, rep, eval) with eval=1,...,150, append all this to df_samples
+                # Store samples a csv, each row (fid, iid, rep, eval) with eval=1,...,250, append all this to df_samples
                 df_samples.append(pd.DataFrame({
                     "fid": fid,
                     "iid": iid,
                     "rep": rep,
-                    "eval": np.arange(1, 151),
+                    "eval": np.arange(1, 251),
                     "x0": X["x0"],
                     "x1": X["x1"],
                     "x2": X["x2"],
@@ -191,11 +191,11 @@ def create_lhs_samples():
     df_samples = pd.concat(df_samples, ignore_index=True)
     if not os.path.exists("../data/lhs_samples"):
         os.makedirs("../data/lhs_samples")
-    df_samples.to_csv("../data/lhs_samples/samples_test.csv", index=False)
+    df_samples.to_csv("../data/lhs_samples/samples_250_test.csv", index=False)
 
 def calculate_ela_from_lhs():
-    df_samples = pd.read_csv("../data/lhs_samples/samples_test.csv")
-    output_path = "../data/ela_from_lhs/ela_test.csv"
+    df_samples = pd.read_csv("../data/lhs_samples/samples_250_test.csv")
+    output_path = "../data/ela_from_lhs/ela_250_test.csv"
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     res = []
 
@@ -350,5 +350,6 @@ if __name__ == "__main__":
     #     raw_data_path = f"../data/run_data_5D/A1_data_5D_test/A1_B{budget}_5D.csv",
     #     output_path = f"../data/ela_with_cma_std/A1_data_5D_test/A1_B{budget}_5D_ela_with_state.csv"
     # )
-    create_lhs_samples()
+    # calculate_ela_from_lhs()
+    calculate_ela_from_lhs()
   
