@@ -7,17 +7,23 @@ ENV_PATH="$HOME/general-env"
 WORKDIR="$HOME/Dokumente/Dynamic_Selector/selector/scripts"
 
 # === Python script name ===
-PY_SCRIPT="selector_for_affine.py"
+PY_SCRIPT="selector.py"
 
 # === Ensure logs directory exists ===
 mkdir -p "$WORKDIR/logs"
 
+for i in $(seq 0 19); do
+  EPMS+=($((i)))
+done
+
+for NUM_LOOKAHEAD_EPMS in "${EPMS[@]}"; do
+
 sbatch <<EOF
 #!/bin/bash
 #SBATCH -A p0026688
-#SBATCH --job-name=selector_affine_lookahead
-#SBATCH --output=${WORKDIR}/logs/selector_affine_lookahead.out
-#SBATCH --error=${WORKDIR}/logs/selector_affine_lookahead.err
+#SBATCH --job-name=selector_lookahead_${NUM_LOOKAHEAD_EPMS}
+#SBATCH --output=${WORKDIR}/logs/selector_lookahead_${NUM_LOOKAHEAD_EPMS}.out
+#SBATCH --error=${WORKDIR}/logs/selector_lookahead_${NUM_LOOKAHEAD_EPMS}.err
 #SBATCH --time=10:00:00
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=1
@@ -29,7 +35,11 @@ cd $WORKDIR
 source $ENV_PATH/bin/activate
 
 # Run your ELA calculation script with BUDGET
-python $PY_SCRIPT 
+python $PY_SCRIPT $NUM_LOOKAHEAD_EPMS
 
 EOF
+
+done
+
+
 

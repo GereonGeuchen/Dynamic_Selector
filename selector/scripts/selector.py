@@ -4,14 +4,21 @@ from pathlib import Path
 import os
 import numpy as np
 import warnings
+import sys
 
+USE_ALGO_FEATURES = False  # Whether to use the ELA features for the performance models or not, will be set from command line argument
+NUM_LOOKAHEAD_EPMS = 0  # This will be set from command line argument
+
+### Will be overwritten by command line arguments, but set to some default values for now
 SELECTOR_MODEL_DIR = "../data/trained_models/switching_models_lookahead"
-PERFORMANCE_MODEL_DIR = "../data/trained_models/algo_performance_models_trained_algo_features"
 SAVE_PATH = "../results/selector_results_with_lookahead_test.csv"
+###
+
+PERFORMANCE_MODEL_DIR = "../data/trained_models/algo_performance_models_trained_algo_features"
 ELA_DIR = "../data/A1_data_ela_test_normalized"
 PRECISION_FILE = "../data/A2_precisions_test.csv"
 BUDGETS = list(range(50, 1001, 50))
-LOOKAHEAD_MODELS_DIRECTORY = "../data/trained_models/lookahead_models_trained"
+LOOKAHEAD_MODELS_DIRECTORY = "../data/trained_models/lookahead_models_all_epms_trained"
 
 class SwitchingSelector:
     def __init__(self, selector_model_dir=SELECTOR_MODEL_DIR, performance_model_dir=PERFORMANCE_MODEL_DIR, lookahead_models_directory=LOOKAHEAD_MODELS_DIRECTORY):
@@ -42,7 +49,8 @@ class SwitchingSelector:
         if lookahead_models_directory:
             lookahead_models_directory = Path(lookahead_models_directory)
             self.lookahead_models = {}
-            for i in range(1, 4):
+            for i in range(0, NUM_LOOKAHEAD_EPMS + 1):
+                if USE_ALGO_FEATURES and i == 0: continue  # t0 predictions are already included as algo features
                 for model_path in lookahead_models_directory.glob(f"lookahead_model_B*_t{i}_trained.pkl"):
                     budget = int(model_path.stem.split("_")[2][1:])  # e.g., lookahead_model_B500 → 500
                     self.lookahead_models[budget, i] = joblib.load(model_path)
@@ -76,55 +84,61 @@ class SwitchingSelector:
                 continue
 
             # First get all algo predictions of the performance model
-            algo_predictions = performance_model.generate_features(features)
+            if USE_ALGO_FEATURES:
+                algo_predictions = performance_model.generate_features(features)
 
-            colnames = ["BFGS","DE","Elitist","MLSL","Non-elitist","PSO"]
+                colnames = ["BFGS","DE","Elitist","MLSL","Non-elitist","PSO"]
 
-            algo_df = pd.DataFrame(algo_predictions, index=features.index, columns=colnames)
+                switching_data_df = pd.DataFrame(algo_predictions, index=features.index, columns=colnames)
+            else:  
+                # switching_data_df empty
+                switching_data_df = pd.DataFrame(index=features.index)
 
             # Get variances of predictions
 
-            var_colnames = [f"var_{name}" for name in colnames]
+            # var_colnames = [f"var_{name}" for name in colnames]
 
-            vars_by_algo = []
+            # vars_by_algo = []
 
-            for i in range(6):
-                random_forest = performance_model.regressors[i].model_class
-                random_forest_predictions = []
+            # for i in range(6):
+            #     random_forest = performance_model.regressors[i].model_class
+            #     random_forest_predictions = []
 
-                for estimator in random_forest.estimators_:
-                    random_forest_predictions.append(
-                        estimator.predict(features).reshape(-1, 1)
-                    )
+            #     for estimator in random_forest.estimators_:
+            #         random_forest_predictions.append(
+            #             estimator.predict(features).reshape(-1, 1)
+            #         )
 
-                var = np.var(np.concatenate(random_forest_predictions, axis=1), axis=1)
-                vars_by_algo.append(var)  
+            #     var = np.var(np.concatenate(random_forest_predictions, axis=1), axis=1)
+            #     vars_by_algo.append(var)  
 
             # for i, var in enumerate(vars_by_algo):
             #     algo_df[var_colnames[i]] = var
 
             # Get predictions from lookahead model if available. For budgets 900, we have t1, t2; for budget 950, t1 only.
-            for i in range(1, 4):
+            for i in range(0, NUM_LOOKAHEAD_EPMS + 1):
+                if USE_ALGO_FEATURES and i == 0: continue  # t0 predictions are already included as algo features
+
                 if (budget, i) in self.lookahead_models:
                     lookahead_model_t = self.lookahead_models[(budget, i)]
                     lookahead_pred_t = lookahead_model_t.predict(features)[0]
-                    algo_df[f"pred_t{i}"] = lookahead_pred_t
+                    switching_data_df[f"pred_t{i}"] = lookahead_pred_t
 
 
             if switch_model is None:
                 continue
 
             # Attach predicted algorithm performances to features for switching decision
-            switching_features = pd.concat([features, algo_df], axis=1)
+            switching_features = pd.concat([features, switching_data_df], axis=1)
 
-            print(f"Switching features for budget {budget}: {switching_features}")
+            # print(f"Switching features for budget {budget}: {switching_features}")
 
             should_switch = switch_model.predict(switching_features)[0]
-            print(f"Switching prediction probability for budget {budget}: {should_switch}")
+            # print(f"Switching prediction probability for budget {budget}: {should_switch}")
             # should_switch = prediction[0] # if hasattr(prediction, "__len__") else prediction
 
             if should_switch:
-                print(f"Switching at budget {budget} for fid={fid}, iid={iid}, rep={rep}")
+                # print(f"Switching at budget {budget} for fid={fid}, iid={iid}, rep={rep}")
                 
                 # Now decide which algorithm to switch to
                 if performance_model is None:
@@ -292,6 +306,19 @@ class SwitchingSelector:
         print(f"Incremental results saved to: {save_path}")
 
 if __name__ == "__main__":
+
+    #Read number of EPMs from command line argument
+    NUM_LOOKAHEAD_EPMS = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+    # NUM_LOOKAHEAD_EPMS = 3
+
+    if USE_ALGO_FEATURES:
+        SELECTOR_MODEL_DIR = f"../data/trained_models/switching_models_lookahead_all_epms_algo_features/switching_models_lookahead_algo_features_{NUM_LOOKAHEAD_EPMS}"
+        SAVE_PATH = f"../results/all_epms_algo_features/selector_results_with_lookahead_all_epms_algo_features_{NUM_LOOKAHEAD_EPMS}.csv"
+    else:
+        SELECTOR_MODEL_DIR = f"../data/trained_models/switching_models_lookahead_all_epms/switching_models_lookahead_{NUM_LOOKAHEAD_EPMS}"
+        SAVE_PATH = f"../results/all_epms/selector_results_with_lookahead_all_epms_{NUM_LOOKAHEAD_EPMS}.csv"
+
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         selector = SwitchingSelector(
