@@ -216,7 +216,7 @@ def update_algo_columns(predictions_csv: str, a1_folder: str, output_folder: str
 # Currently, we first attach binary labels and then insert the predictions, weird workflow so I might change that later
 def add_preds_to_ela_folder(ela_dir, preds_csv, pattern="A1_B*_5D_ela.csv", out_dir=None):
     ela_dir = Path(ela_dir)
-    preds = pd.read_csv(preds_csv)[["fid","iid","rep","budget","pred_t1","pred_t2","pred_t3"]]
+    preds = pd.read_csv(preds_csv)[["fid","iid","rep","budget"] + [f"pred_t{i}" for i in range(0,20)]]
     preds[["fid","iid","rep","budget"]] = preds[["fid","iid","rep","budget"]].astype(int)
 
     out_dir = Path(out_dir) if out_dir else (ela_dir / "with_preds")
@@ -228,12 +228,8 @@ def add_preds_to_ela_folder(ela_dir, preds_csv, pattern="A1_B*_5D_ela.csv", out_
         if budget == 1000: continue
 
         # decide which prediction columns to use
-        if budget == 950:
-            use_cols = ["pred_t1"]
-        elif budget == 900:
-            use_cols = ["pred_t1", "pred_t2"]
-        else:
-            use_cols = ["pred_t1", "pred_t2", "pred_t3"]
+        max_lookahead = (1000 - budget) // 50
+        use_cols = [f"pred_t{i}" for i in range(0, max_lookahead + 1)]
 
 
         ela = pd.read_csv(p)
@@ -257,6 +253,6 @@ def add_preds_to_ela_folder(ela_dir, preds_csv, pattern="A1_B*_5D_ela.csv", out_
 if __name__ == "__main__":
     add_preds_to_ela_folder(
         ela_dir="../data/switch_data/A1_data_algo_features_switch",
-        preds_csv="../data/lookahead_performances/predicted_switchpoint_performances.csv",
-        out_dir="../data/switch_data/A1_data_algo_features_switch_with_lookahead_predictions"
+        preds_csv="../data/lookahead_performances_all_epms/predicted_switchpoint_performances.csv",
+        out_dir="../data/switch_data/A1_data_algo_features_switch_with_lookahead_predictions_all_epms"
     )

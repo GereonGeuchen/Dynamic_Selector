@@ -4,27 +4,23 @@ import numpy as np
 import pandas as pd
 import warnings
 
-MODEL_DIR = "../data/models/lookahead_models_untrained"
-ELA_TEMPLATE = "../data/ela/A1_data_ela_normalized_with_future_performances/A1_B{budget}_5D_ela.csv"
+MODEL_DIR = "../data/models/lookahead_models_all_epms_untrained"
+ELA_TEMPLATE = "../data/ela/A1_data_ela_normalized_with_future_performances_20/A1_B{budget}_5D_ela.csv"
 
-OUTPUT_DIR = "../data/lookahead_performances"
+OUTPUT_DIR = "../data/lookahead_performances_all_epms"
 OUT_FILE = "predicted_switchpoint_performances_test.csv"
 
 MODEL_TEMPLATE = "lookahead_model_B{budget}_t{t}_untrained.pkl"
 
+# 0 to 19
 TARGET_COLS = {
-    1: "best_precision_t+1",
-    2: "best_precision_t+2",
-    3: "best_precision_t+3",
+    i: f"best_precision_t+{i}" for i in range(0, 20) 
 }
 
 
 def available_ts_for_budget(budget: int):
-    if budget == 950:
-        return [1]
-    if budget == 900:
-        return [1, 2]
-    return [1, 2, 3]
+    end_index = (1000 - budget) // 50
+    return [t for t in range(0, end_index + 1) if f"best_precision_t+{t}" in TARGET_COLS.values()]
 
 
 def load_factory(model_dir: str, budget: int, t: int):
@@ -96,9 +92,11 @@ def crossvalidated_switchpoint_predictions(budget: int):
         # store rows
         for i, (fid, iid, rep) in enumerate(test_keys):
             row = {"fid": fid, "iid": iid, "rep": rep, "budget": budget}
-            row["pred_t1"] = float(preds_by_t[1][i]) if 1 in preds_by_t else np.nan
-            row["pred_t2"] = float(preds_by_t[2][i]) if 2 in preds_by_t else np.nan
-            row["pred_t3"] = float(preds_by_t[3][i]) if 3 in preds_by_t else np.nan
+            for j in range(0, 20):
+                row[f"pred_t{j}"] = float(preds_by_t[j][i]) if j in preds_by_t else np.nan
+            # row["pred_t1"] = float(preds_by_t[1][i]) if 1 in preds_by_t else np.nan
+            # row["pred_t2"] = float(preds_by_t[2][i]) if 2 in preds_by_t else np.nan
+            # row["pred_t3"] = float(preds_by_t[3][i]) if 3 in preds_by_t else np.nan
             out_rows.append(row)
 
     return pd.DataFrame(out_rows)
