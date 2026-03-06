@@ -14,14 +14,14 @@ from sklearn.metrics import r2_score
 
 # === Parameters ===
 ela_data_dir = "../data/A1_data_ela_normalized_with_future_performances_20"
-smac_output_dir = "smac_outputs/smac_output_lookahead_optimisation"
-output_models_dir = "../data/models/tuned_models/lookahead_models_trained"
-untrained_output_models_dir = "../data/models/untrained_models/lookahead_models_untrained"
+smac_output_dir = "smac_outputs/smac_output_lookahead_optimisation_all_epms"
+output_models_dir = "../data/models/tuned_models/lookahead_models_all_epms_trained"
+untrained_output_models_dir = "../data/models/untrained_models/lookahead_models_all_epms_untrained"
 
 
 def _target_col(horizon: int) -> str:
-    if horizon not in range(1, 20):
-        raise ValueError(f"horizon must be in 1..19, got {horizon}")
+    if horizon not in range(0, 20):
+        raise ValueError(f"horizon must be in 0..19, got {horizon}")
     return f"best_precision_t+{horizon}"
 
 
@@ -156,14 +156,17 @@ def tune_lookahead_model(budget: int, horizon: int, n_trials: int = 100, seed: i
 
 
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 2:
         print("Usage: python tune_lookahead.py <budget> <horizon(1|2|3)>")
         sys.exit(1)
 
     budget = int(sys.argv[1])
-    horizon = int(sys.argv[2])
-
-    tune_lookahead_model(budget=budget, horizon=horizon)
+    
+    for horizon in range(0, 20):
+        if horizon > (1000 - budget) // 50:
+            print(f"Skipping B{budget}, t+{horizon}: horizon not available from budget.")
+            continue
+        tune_lookahead_model(budget=budget, horizon=horizon)
 
 
 if __name__ == "__main__":

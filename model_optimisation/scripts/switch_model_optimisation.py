@@ -6,6 +6,7 @@ import joblib
 from functools import partial
 from itertools import combinations
 from multiprocessing import Pool
+import sys
 
 # ========== ConfigSpace and SMAC imports ==========
 from ConfigSpace import ConfigurationSpace
@@ -26,16 +27,31 @@ REPS = list(range(20))
 
 # === Paths ===
 
-ELA_DIR_SWITCH = "../data/A1_data_algo_features_switch_with_lookahead"
+NUM_LOOKAHEAD_EPMS = 0  # This will be set from command line argument
+USE_ALGO_FEATURES = False  # Whether to use the ELA features for the performance models or not, will be set from command line argument
+ELA_DIR_SWITCH = "../data/A1_data_algo_features_switch_with_lookahead_all_epms"
 ELA_DIR_ALGO = "../data/A1_data_ela_normalized_with_precisions"
 PRECISION_FILE = "../data/A2_precisions_normalized_log10.csv"
 CV_MODELS_DIR = "../data/models/trained_models/algo_performance_models_cv_algo_features"
 UNTRAINED_PERF_MODELS_DIR = "../data/models/untrained_models/algo_performance_models_algo_features"
-SMAC_OUTPUT_DIR = "smac_output_switch_lookahead"
-OUTPUT_PATH = "../data/models/tuned_models/switching_models_lookahead"
+SMAC_OUTPUT_DIR = f"smac_lookaheads/smac_output_switch_lookahead_{NUM_LOOKAHEAD_EPMS}"
+OUTPUT_PATH = f"../data/models/tuned_models/switching_models_lookahead_{NUM_LOOKAHEAD_EPMS}"
 
 
 # ========== Helper classes ==========
+def prepare_switch_data(df_switch):
+    # This function either drops or keeps algo features, and keeps the right amount of lookahead predictions based on the global config variables
+    if USE_ALGO_FEATURES:
+        df_switch = df_switch.drop(columns=["pred_t0"], errors="ignore")
+    else:
+        df_switch = df_switch.drop(columns=["BFGS", "DE", "PSO", "MLSL", "Non-elitist", "Elitist"], errors="ignore")
+    
+    if NUM_LOOKAHEAD_EPMS is not None:
+        df_switch = df_switch.drop(columns=[f"pred_t{t}" for t in range(NUM_LOOKAHEAD_EPMS + 1, 20)], errors="ignore")
+    else:
+        df_switch = df_switch.drop(columns=[f"pred_t{t}" for t in range(1, 20)], errors="ignore")
+
+    return df_switch
 
 class SwitchingSelectorCV:
     def __init__(self, precision_file):
@@ -60,6 +76,9 @@ class SwitchingSelectorCV:
                 
             df_algo = pd.read_csv(ela_path_algo)
             df_switch = pd.read_csv(ela_path_switch).drop(columns=["switch"])
+
+            df_switch = prepare_switch_data(df_switch)
+
             df_algo = df_algo.iloc[:, :-6]
             row_algo = df_algo[(df_algo["fid"] == fid) & (df_algo["iid"] == iid) & (df_algo["rep"] == rep)]
             row_switch = df_switch[(df_switch["fid"] == fid) & (df_switch["iid"] == iid) & (df_switch["rep"] == rep)]
@@ -68,6 +87,7 @@ class SwitchingSelectorCV:
                 continue
 
             features_switch = row_switch.iloc[:, 4:]
+
             features_switch.index = [(fid, iid, rep)]
             should_switch = switch_model.predict(features_switch)[0]
             print(should_switch)
@@ -112,6 +132,8 @@ def train_models_for_iid(test_iid, config, selector):
         if not ela_path_switch.exists():
             continue
         train_df = pd.read_csv(ela_path_switch)
+
+        train_df = prepare_switch_data(train_df)
         # train_df = train_df.drop(columns=["Elitist", "Non-elitist", "MLSL", "PSO", "DE", "BFGS"])
         train_df = train_df[train_df["iid"].isin(train_iids)]
 
@@ -192,6 +214,8 @@ def main():
         if not ela_path_switch.exists():
             continue
         train_df = pd.read_csv(ela_path_switch)
+
+        train_df = prepare_switch_data(train_df)
         # train_df = train_df.drop(columns=["Elitist", "Non-elitist", "MLSL", "PSO", "DE", "BFGS"])
         X_train = train_df.iloc[:, 4:].drop(columns=["switch"])
         y_train = train_df["switch"]
@@ -204,4 +228,15 @@ def main():
     print("All final switching models trained and saved successfully.")
 
 if __name__ == "__main__":
+    # Read the number of lookahead epms from command line
+    
+    if len(sys.argv) != 2:
+        print("Usage: python switch_model_optimisation.py <num_lookahead_epms>")
+        sys.exit(1)
+    NUM_LOOKAHEAD_EPMS = int(sys.argv[1])
+
+    SMAC_OUTPUT_DIR = f"smac_lookaheads_algo_features/smac_output_switch_lookahead_{NUM_LOOKAHEAD_EPMS}"
+    OUTPUT_PATH = f"../data/models/tuned_models/switching_models_lookahead_{NUM_LOOKAHEAD_EPMS}"
+
+
     main()
