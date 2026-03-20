@@ -599,7 +599,7 @@ def normalize_precision_per_fid(df, col="precision", min_scale=1e-12, max_scale=
 def attach_future_best_precisions(
     raw_ela_folder: str | Path,
     best_precisions_csv: str | Path,
-    n_future: int = 3,
+    n_future: int = 20,
 ) -> list[Path]:
     """
     Attach the best precisions of the next n switching points to each ELA file. Used for the lookahaed EPM.
@@ -607,7 +607,7 @@ def attach_future_best_precisions(
     raw_ela_folder = Path(raw_ela_folder)
     best_precisions_csv = Path(best_precisions_csv)
 
-    out_folder = raw_ela_folder.parent / "A1_data_ela_normalized_with_future_performances_20"
+    out_folder = raw_ela_folder.parent / "A1_data_ela_normalized_with_future_performances_20_afterwards"
     out_folder.mkdir(parents=True, exist_ok=True)
 
     # --- build lookahead table ---
@@ -615,12 +615,12 @@ def attach_future_best_precisions(
     best = best.sort_values(["fid", "iid", "rep", "budget"]).reset_index(drop=True)
 
     g = best.groupby(["fid", "iid", "rep"], sort=False)
-    for k in range(1, n_future + 1):
+    for k in range(0, n_future + 1):
         best[f"best_precision_t+{k}"] = g["best_precision"].shift(-k)
 
     future_cols = (
         ["fid", "iid", "rep", "budget"]
-        + [f"best_precision_t+{k}" for k in range(1, n_future + 1)]
+        + [f"best_precision_t+{k}" for k in range(0, n_future + 1)]
     )
     future_table = best[future_cols]
 
@@ -648,7 +648,7 @@ def attach_future_best_precisions(
 
         # always drop budget again
         ela_aug = ela_aug.drop(columns=["budget"])
-        future_colnames = [f"best_precision_t+{k}" for k in range(1, n_future + 1)]
+        future_colnames = [f"best_precision_t+{k}" for k in range(0, n_future + 1)]
         drop_cols = [c for c in future_colnames if c in ela_aug.columns and ela_aug[c].isna().all()]
         ela_aug = ela_aug.drop(columns=drop_cols)
 
@@ -772,19 +772,21 @@ def add_algorithm_precisions_lhs(ela_path, precision_path):
     df_labeled.to_csv(out_path, index=False)
 
 if __name__ == "__main__":
-    # normalize_test_ela(
-    #     train_csv_path="../data/ela_from_lhs/ela_150.csv",
-    #     test_csv_path="../data/ela_from_lhs/ela_150_test.csv",
-    #     test_out_path="../data/ela_normalized/ela_lhs_150_all_reps_test.csv"
+    # attach_future_best_precisions(
+    #     raw_ela_folder="../data/ela/A1_data_ela_normalized",
+    #     best_precisions_csv="../data/A2_best_normalized_precisions.csv",
+    #     n_future=20,
     # )
-
-    df = pd.read_csv("../data/A2_precisions.csv")
-    df = df[(df["algorithm"] == "BFGS") & (df["budget"] == 650)]
-    print(df["precision"].sum())
-
-    extract_a2_precisions(
-        base_dir = "../data/run_data_5D/A2_data_5D",
-        algorithms=["BFGS"],
-        budgets = [56],
-        max_evals=1000
+    # precision_df = pd.read_csv("../data/A2_precisions.csv")
+    # # for each (fid,iid,rep,budget), find lowest precisoin across algorithms, and save as A2_best_precisions.csv
+    # best_df = (
+    #     precision_df
+    #     .groupby(["fid", "iid", "rep", "budget"], as_index=False)
+    #     .agg(best_precision=("precision", "min"))
+    # )
+    # best_df.to_csv("../data/A2_best_precisions.csv", index=False)
+    attach_future_best_precisions(
+        raw_ela_folder="../data/ela/A1_data_ela_normalized",
+        best_precisions_csv="../data/A2_best_afterwards_normalized_precisions.csv",
+        n_future=20,
     )
