@@ -29,13 +29,13 @@ REPS = list(range(20))
 
 NUM_LOOKAHEAD_EPMS = 0  # This will be set from command line argument
 USE_ALGO_FEATURES = False  # Whether to use the ELA features for the performance models or not, will be set from command line argument
-ELA_DIR_SWITCH = "../data/A1_data_algo_features_switch_with_lookahead_all_epms"
+ELA_DIR_SWITCH = "../data/A1_data_algo_features_switch_with_lookahead_predictions_all_epms_afterwards_normalized"
 ELA_DIR_ALGO = "../data/A1_data_ela_normalized_with_precisions"
 PRECISION_FILE = "../data/A2_precisions_normalized_log10.csv"
 CV_MODELS_DIR = "../data/models/trained_models/algo_performance_models_cv_algo_features"
 UNTRAINED_PERF_MODELS_DIR = "../data/models/untrained_models/algo_performance_models_algo_features"
-SMAC_OUTPUT_DIR = f"smac_lookaheads/smac_output_switch_lookahead_{NUM_LOOKAHEAD_EPMS}"
-OUTPUT_PATH = f"../data/models/tuned_models/switching_models_lookahead_{NUM_LOOKAHEAD_EPMS}"
+SMAC_OUTPUT_DIR = f"smac_lookaheads/smac_output_switch_lookahead_{NUM_LOOKAHEAD_EPMS}_normalized_afterwards"
+OUTPUT_PATH = f"../data/models/tuned_models/switching_models_lookahead_{NUM_LOOKAHEAD_EPMS}_normalized_afterwards"
 
 
 # ========== Helper classes ==========
@@ -64,7 +64,11 @@ class SwitchingSelectorCV:
             switch_model = switching_models.get(budget)
             perf_model = performance_models.get(budget)
             if switch_model is None or perf_model is None:
-                print("No model available for this budget, skipping.")
+                if switch_model is None:
+                    print(f"No switching model for budget {budget}")
+                if perf_model is None:
+                    print(f"No performance model for budget {budget}")
+                #print("No model available for this budget, skipping.")
                 continue
 
             ela_path_algo = Path(ELA_DIR_ALGO) / f"A1_B{budget}_5D_ela.csv"
@@ -235,8 +239,8 @@ if __name__ == "__main__":
         sys.exit(1)
     NUM_LOOKAHEAD_EPMS = int(sys.argv[1])
 
-    SMAC_OUTPUT_DIR = f"smac_lookaheads_algo_features/smac_output_switch_lookahead_{NUM_LOOKAHEAD_EPMS}"
-    OUTPUT_PATH = f"../data/models/tuned_models/switching_models_lookahead_{NUM_LOOKAHEAD_EPMS}"
+    SMAC_OUTPUT_DIR = f"smac_lookaheads_algo_features/smac_output_switch_lookahead_{NUM_LOOKAHEAD_EPMS}_normalized_afterwards"
+    OUTPUT_PATH = f"../data/models/tuned_models/switching_models_lookahead_{NUM_LOOKAHEAD_EPMS}_normalized_afterwards"
 
 
     main()

@@ -7,4 +7,4 @@ Traceback (most recent call last):
     model = load_factory(MODEL_DIR, budget, t)
   File "/rwthfs/rz/cluster/home/pf657206/Dokumente/Dynamic_Selector/performance_recording/scripts/record_lookahead_performance.py", line 29, in load_factory
     raise FileNotFoundError(f"Missing model factory: {path}")
-FileNotFoundError: Missing model factory: ../data/models/lookahead_models_all_epms_untrained/lookahead_model_B1000_t0_untrained.pkl
+FileNotFoundError: Missing model factory: ../data/models/lookahead_models_all_epms_afterwards_normalized_untrained/lookahead_model_B1000_t0_untrained.pkl

@@ -21,8 +21,8 @@ mkdir -p "$WORKDIR/logs"
 for i in $(seq 1 19); do
   BUDGETS+=($((50 * i)))
 done
+# Call script for each budget
 for BUDGET in "${BUDGETS[@]}"; do
-    for I in $(seq 4 10); do
   sbatch <<EOF
 #!/bin/bash
 #SBATCH -A p0026688
@@ -40,7 +40,7 @@ cd $WORKDIR
 source $ENV_PATH/bin/activate
 
 # Run the Python tuning script
-python $PY_SCRIPT $BUDGET $I
+python $PY_SCRIPT $BUDGET 
 EOF
     done
 done

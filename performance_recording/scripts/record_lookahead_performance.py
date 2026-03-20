@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 import warnings
 
-MODEL_DIR = "../data/models/lookahead_models_all_epms_untrained"
-ELA_TEMPLATE = "../data/ela/A1_data_ela_normalized_with_future_performances_20/A1_B{budget}_5D_ela.csv"
+MODEL_DIR = "../data/models/lookahead_models_all_epms_afterwards_normalized_untrained"
+ELA_TEMPLATE = "../data/ela/A1_data_ela_normalized_with_future_performances_20_afterwards/A1_B{budget}_5D_ela.csv"
 
-OUTPUT_DIR = "../data/lookahead_performances_all_epms"
+OUTPUT_DIR = "../data/lookahead_performances_all_epms_afterwards_normalized"  # where to save the final CSV with predictions
 OUT_FILE = "predicted_switchpoint_performances_test.csv"
 
 MODEL_TEMPLATE = "lookahead_model_B{budget}_t{t}_untrained.pkl"

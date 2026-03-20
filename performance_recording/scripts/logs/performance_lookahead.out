@@ -5,7 +5,7 @@
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 50]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 50]
 
 === Processing budget 100 ===
   - Testing IID 1.0
@@ -13,7 +13,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 100]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 100]
 
 === Processing budget 150 ===
   - Testing IID 1.0
@@ -21,7 +21,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 150]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 150]
 
 === Processing budget 200 ===
   - Testing IID 1.0
@@ -29,7 +29,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 200]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 200]
 
 === Processing budget 250 ===
   - Testing IID 1.0
@@ -37,7 +37,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 250]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 250]
 
 === Processing budget 300 ===
   - Testing IID 1.0
@@ -45,7 +45,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 300]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 300]
 
 === Processing budget 350 ===
   - Testing IID 1.0
@@ -53,7 +53,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 350]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 350]
 
 === Processing budget 400 ===
   - Testing IID 1.0
@@ -61,7 +61,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 400]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 400]
 
 === Processing budget 450 ===
   - Testing IID 1.0
@@ -69,7 +69,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 450]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 450]
 
 === Processing budget 500 ===
   - Testing IID 1.0
@@ -77,7 +77,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 500]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 500]
 
 === Processing budget 550 ===
   - Testing IID 1.0
@@ -85,7 +85,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 550]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 550]
 
 === Processing budget 600 ===
   - Testing IID 1.0
@@ -93,7 +93,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 600]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 600]
 
 === Processing budget 650 ===
   - Testing IID 1.0
@@ -101,7 +101,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 650]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 650]
 
 === Processing budget 700 ===
   - Testing IID 1.0
@@ -109,7 +109,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 700]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 700]
 
 === Processing budget 750 ===
   - Testing IID 1.0
@@ -117,7 +117,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 750]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 750]
 
 === Processing budget 800 ===
   - Testing IID 1.0
@@ -125,7 +125,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 800]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 800]
 
 === Processing budget 850 ===
   - Testing IID 1.0
@@ -133,7 +133,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 850]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 850]
 
 === Processing budget 900 ===
   - Testing IID 1.0
@@ -141,7 +141,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 900]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 900]
 
 === Processing budget 950 ===
   - Testing IID 1.0
@@ -149,7 +149,7 @@ Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performance
   - Testing IID 3.0
   - Testing IID 4.0
   - Testing IID 5.0
-Saved: ../data/lookahead_performances_all_epms/predicted_switchpoint_performances_test.csv [through budget 950]
+Saved: ../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances_test.csv [through budget 950]
 
 === Processing budget 1000 ===
   - Testing IID 1.0

@@ -253,6 +253,6 @@ def add_preds_to_ela_folder(ela_dir, preds_csv, pattern="A1_B*_5D_ela.csv", out_
 if __name__ == "__main__":
     add_preds_to_ela_folder(
         ela_dir="../data/switch_data/A1_data_algo_features_switch",
-        preds_csv="../data/lookahead_performances_all_epms/predicted_switchpoint_performances.csv",
-        out_dir="../data/switch_data/A1_data_algo_features_switch_with_lookahead_predictions_all_epms"
+        preds_csv="../data/lookahead_performances_all_epms_afterwards_normalized/predicted_switchpoint_performances.csv",
+        out_dir="../data/switch_data/A1_data_algo_features_switch_with_lookahead_predictions_all_epms_afterwards_normalized"
     )

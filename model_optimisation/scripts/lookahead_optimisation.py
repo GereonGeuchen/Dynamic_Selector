@@ -13,10 +13,10 @@ from sklearn.metrics import r2_score
 
 
 # === Parameters ===
-ela_data_dir = "../data/A1_data_ela_normalized_with_future_performances_20"
-smac_output_dir = "smac_outputs/smac_output_lookahead_optimisation_all_epms"
-output_models_dir = "../data/models/tuned_models/lookahead_models_all_epms_trained"
-untrained_output_models_dir = "../data/models/untrained_models/lookahead_models_all_epms_untrained"
+ela_data_dir = "../data/A1_data_ela_normalized_with_future_performances_20_afterwards"
+smac_output_dir = "smac_outputs/smac_output_lookahead_optimisation_all_epms_afterwards_normalized"
+output_models_dir = "../data/models/tuned_models/lookahead_models_all_epms_afterwards_normalized_trained"
+untrained_output_models_dir = "../data/models/untrained_models/lookahead_models_all_epms_afterwards_normalized_untrained"
 
 
 def _target_col(horizon: int) -> str:
