@@ -42,14 +42,14 @@ def print_performances(df: pd.DataFrame):
             # print(f"Static budget {budget} closed gap (best switching): {(total_precision - sbs_sum) / (sum_best_switching - sbs_sum)}")
 
 if __name__== "__main__":
-    # for i in range(0, 20):
-    #     df = pd.read_csv(f"../results/all_epms/selector_results_with_lookahead_all_epms_{i}.csv")
-    #     print(f"=== Results for lookahead with {i} EPMs ===")
-    #     print_performances(df)
+    for i in range(0, 20):
+        df = pd.read_csv(f"../results/all_epms_normalized_afterwards/selector_results_with_lookahead_all_epms_{i}.csv")
+        print(f"=== Results for lookahead with {i} EPMs ===")
+        print_performances(df)
     
-    # for i in range(0, 20):
-    #     df = pd.read_csv(f"../results/all_epms_algo_features/selector_results_with_lookahead_all_epms_algo_features_{i}.csv")
-    #     print(f"=== Results for lookahead with {i} EPMs and algo features ===")
-    #     print_performances(df)
-    df = pd.read_csv(f"../results/selector_results_with_algo_features.csv")
-    print_performances(df)
+    for i in range(0, 20):
+        df = pd.read_csv(f"../results/all_epms_algo_features_normalized_afterwards/selector_results_with_lookahead_all_epms_algo_features_{i}.csv")
+        print(f"=== Results for lookahead with {i} EPMs and algo features ===")
+        print_performances(df)
+    # df = pd.read_csv(f"../results/selector_results_with_algo_features.csv")
+    # print_performances(df)

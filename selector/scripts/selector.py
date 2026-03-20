@@ -6,7 +6,7 @@ import numpy as np
 import warnings
 import sys
 
-USE_ALGO_FEATURES = False  # Whether to use the ELA features for the performance models or not, will be set from command line argument
+USE_ALGO_FEATURES = True  # Whether to use the ELA features for the performance models or not, will be set from command line argument
 NUM_LOOKAHEAD_EPMS = 0  # This will be set from command line argument
 
 ### Will be overwritten by command line arguments, but set to some default values for now
@@ -18,7 +18,7 @@ PERFORMANCE_MODEL_DIR = "../data/trained_models/algo_performance_models_trained_
 ELA_DIR = "../data/A1_data_ela_test_normalized"
 PRECISION_FILE = "../data/A2_precisions_test.csv"
 BUDGETS = list(range(50, 1001, 50))
-LOOKAHEAD_MODELS_DIRECTORY = "../data/trained_models/lookahead_models_all_epms_trained"
+LOOKAHEAD_MODELS_DIRECTORY = "../data/trained_models/lookahead_models_all_epms_afterwards_normalized_trained"
 
 class SwitchingSelector:
     def __init__(self, selector_model_dir=SELECTOR_MODEL_DIR, performance_model_dir=PERFORMANCE_MODEL_DIR, lookahead_models_directory=LOOKAHEAD_MODELS_DIRECTORY):
@@ -312,11 +312,11 @@ if __name__ == "__main__":
     # NUM_LOOKAHEAD_EPMS = 3
 
     if USE_ALGO_FEATURES:
-        SELECTOR_MODEL_DIR = f"../data/trained_models/switching_models_lookahead_all_epms_algo_features/switching_models_lookahead_algo_features_{NUM_LOOKAHEAD_EPMS}"
-        SAVE_PATH = f"../results/all_epms_algo_features/selector_results_with_lookahead_all_epms_algo_features_{NUM_LOOKAHEAD_EPMS}.csv"
+        SELECTOR_MODEL_DIR = f"../data/trained_models/switching_models_all_epms_algo_features_normalized_afterwards/switching_models_lookahead_algo_features_{NUM_LOOKAHEAD_EPMS}_normalized_afterwards"
+        SAVE_PATH = f"../results/all_epms_algo_features_normalized_afterwards/selector_results_with_lookahead_all_epms_algo_features_{NUM_LOOKAHEAD_EPMS}.csv"
     else:
-        SELECTOR_MODEL_DIR = f"../data/trained_models/switching_models_lookahead_all_epms/switching_models_lookahead_{NUM_LOOKAHEAD_EPMS}"
-        SAVE_PATH = f"../results/all_epms/selector_results_with_lookahead_all_epms_{NUM_LOOKAHEAD_EPMS}.csv"
+        SELECTOR_MODEL_DIR = f"../data/trained_models/switching_models_all_epms_normalized_afterwards/switching_models_lookahead_{NUM_LOOKAHEAD_EPMS}_normalized_afterwards"
+        SAVE_PATH = f"../results/all_epms_normalized_afterwards/selector_results_with_lookahead_all_epms_{NUM_LOOKAHEAD_EPMS}.csv"
 
 
     with warnings.catch_warnings():
