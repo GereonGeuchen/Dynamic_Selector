@@ -6,7 +6,7 @@ import numpy as np
 import warnings
 import sys
 
-USE_ALGO_FEATURES = True  # Whether to use the ELA features for the performance models or not, will be set from command line argument
+USE_ALGO_FEATURES = False  # Whether to use the ELA features for the performance models or not, will be set from command line argument
 NUM_LOOKAHEAD_EPMS = 0  # This will be set from command line argument
 
 ### Will be overwritten by command line arguments, but set to some default values for now
@@ -126,6 +126,7 @@ class SwitchingSelector:
 
 
             if switch_model is None:
+                print(f"No switching model for budget {budget}, skipping...")
                 continue
 
             # Attach predicted algorithm performances to features for switching decision
@@ -308,15 +309,15 @@ class SwitchingSelector:
 if __name__ == "__main__":
 
     #Read number of EPMs from command line argument
-    NUM_LOOKAHEAD_EPMS = int(sys.argv[1]) if len(sys.argv) > 1 else 0
-    # NUM_LOOKAHEAD_EPMS = 3
+    # NUM_LOOKAHEAD_EPMS = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+    NUM_LOOKAHEAD_EPMS = -1
 
     if USE_ALGO_FEATURES:
         SELECTOR_MODEL_DIR = f"../data/trained_models/switching_models_all_epms_algo_features_normalized_afterwards/switching_models_lookahead_algo_features_{NUM_LOOKAHEAD_EPMS}_normalized_afterwards"
         SAVE_PATH = f"../results/all_epms_algo_features_normalized_afterwards/selector_results_with_lookahead_all_epms_algo_features_{NUM_LOOKAHEAD_EPMS}.csv"
     else:
-        SELECTOR_MODEL_DIR = f"../data/trained_models/switching_models_all_epms_normalized_afterwards/switching_models_lookahead_{NUM_LOOKAHEAD_EPMS}_normalized_afterwards"
-        SAVE_PATH = f"../results/all_epms_normalized_afterwards/selector_results_with_lookahead_all_epms_{NUM_LOOKAHEAD_EPMS}.csv"
+        SELECTOR_MODEL_DIR = f"../data/trained_models/switching_models_lookahead_all_epms/switching_models_lookahead_{NUM_LOOKAHEAD_EPMS}"
+        SAVE_PATH = f"../results/all_epms/selector_results_with_lookahead_all_epms_{NUM_LOOKAHEAD_EPMS}.csv"
 
 
     with warnings.catch_warnings():
