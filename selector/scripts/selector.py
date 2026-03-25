@@ -306,6 +306,59 @@ class SwitchingSelector:
 
         print(f"Incremental results saved to: {save_path}")
 
+    # Only record choices of performance model at B=150 from Kostovska et al.
+    def record_B150(self, ela_dir=ELA_DIR, precision_file=PRECISION_FILE):
+        precision_df = pd.read_csv(precision_file)
+        ela_path = Path(ela_dir) / f"A1_B150_5D_ela.csv"
+        df = pd.read_csv(ela_path)
+
+        model = self.performance_models.get(150)
+        if model is None:
+            print("No performance model for budget 150, skipping...")
+            return
+
+        records = []
+        for fid in range(1, 25):
+            for iid in [6, 7]:
+                for rep in range(20):
+                    print(f"Processing (fid={fid}, iid={iid}, rep={rep}) for B=150...")
+                    row = df[
+                        (df["fid"] == fid) &
+                        (df["iid"] == iid) &
+                        (df["rep"] == rep)
+                    ]
+
+                    if row.empty:
+                        continue
+
+                    features = row.iloc[:, 4:]
+                    features.index = [(fid, iid, rep)]
+
+                    algo_pred = model.predict(features)
+                    algo = list(algo_pred.values())[0][0][0]
+
+                    match = precision_df[
+                        (precision_df["fid"] == fid) &
+                        (precision_df["iid"] == iid) &
+                        (precision_df["rep"] == rep) &
+                        (precision_df["budget"] == 150) &
+                        (precision_df["algorithm"] == algo)
+                    ]
+                    precision = match["precision"].values[0] if not match.empty else None
+
+                    records.append({
+                        "fid": fid,
+                        "iid": iid,
+                        "rep": rep,
+                        "selected_algorithm": algo,
+                        "precision": precision
+                    })
+
+        result_df = pd.DataFrame(records)
+        result_df.to_csv("../results/B150_performance_model_choices.csv", index=False)
+        print("B=150 performance model choices saved to ../results/B150_performance_model_choices.csv")
+
+
 if __name__ == "__main__":
 
     #Read number of EPMs from command line argument
@@ -327,11 +380,12 @@ if __name__ == "__main__":
             performance_model_dir=PERFORMANCE_MODEL_DIR,
             lookahead_models_directory=LOOKAHEAD_MODELS_DIRECTORY,
         )
-        selector.evaluate_selector_to_csv(
-            fids=list(range(1, 25)),
-            iids=[6, 7],
-            reps=list(range(20)),
-            save_path=SAVE_PATH,
-            ela_dir=ELA_DIR,
-            precision_file=PRECISION_FILE
-        )
+        # selector.evaluate_selector_to_csv(
+        #     fids=list(range(1, 25)),
+        #     iids=[6, 7],
+        #     reps=list(range(20)),
+        #     save_path=SAVE_PATH,
+        #     ela_dir=ELA_DIR,
+        #     precision_file=PRECISION_FILE
+        # )
+        selector.record_B150(ela_dir=ELA_DIR, precision_file=PRECISION_FILE)
