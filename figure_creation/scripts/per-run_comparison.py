@@ -17,8 +17,8 @@ per_instance_prec = 2571.83
 
 df_prec_train = pd.read_csv("../data/A2_precisions.csv")
 df_prec_test = pd.read_csv("../data/A2_precisions_test.csv")
-df_results = pd.read_csv("../data/selector_results_with_lookahead_all_epms_10.csv")
-df_results_per_instance = pd.read_csv("../data/per_instance_selector_results_150_all_reps.csv")
+df_results = pd.read_csv("../data/selector_performance_data/selector_results_with_lookahead_all_epms_10_sbs.csv")
+# df_results_per_instance = pd.read_csv("../data/per_instance_selector_results_150_all_reps.csv")
 
 results = {
     "emps": {
@@ -106,7 +106,7 @@ def plot_closed_gap_static_selector():
     fig = px.bar(
         x=x_vals,
         y=y_vals,
-        labels={"x": "Method", "y": "Closed Gap"},
+        labels={"x": "A1 budget", "y": "Closed gap"},
     )
 
     fig.update_traces(marker_color="royalblue",
@@ -119,7 +119,7 @@ def plot_closed_gap_static_selector():
         range=[0, 1050],
         tickmode="array",
         tickvals=x_vals,
-        ticktext=[f"B{b}" for b in x_vals],
+        ticktext=[f"{b}" for b in x_vals],
         showline=True,
         linewidth=2,
         linecolor="black",
@@ -202,7 +202,7 @@ def plot_closed_gap_static_selector():
         height=450,
     )
 
-    fig.update_xaxes(title=None)
+    # fig.update_xaxes(title=None)
 
     if not os.path.exists("../figures"):
         os.makedirs("../figures")
@@ -792,14 +792,14 @@ def plot_closed_gap_emps(results, out_path="../figures/closed_gaps_epms.pdf"):
 
     x_vals = sorted(emps_data.keys())  # 0 ... 19
     y_vals = [emps_data[t]["closed_gap"] for t in x_vals]
-    significant = [emps_data[t]["significant"] for t in x_vals]
 
-    colors = ["royalblue" if sig else "royalblue" for sig in significant]
+    # Color first column in firebrich, else royalblue
+    colors = ["firebrick"] + ["royalblue" for _ in range(1, len(x_vals))]
 
     fig = px.bar(
         x=x_vals,
         y=y_vals,
-        labels={"x": "Lookahead horizon", "y": "Closed Gap"},
+        labels={"x": "Lookahead horizon", "y": "Closed gap"},
     )
 
     fig.update_traces(
@@ -1003,7 +1003,7 @@ def plot_closed_gap_d10_b650_sbs_per_instance():
     fig = px.bar(
         x=x_vals,
         y=y_vals,
-        labels={"x": "", "y": "Closed Gap"},
+        labels={"x": "", "y": "Closed gap"},
     )
 
     fig.update_traces(
@@ -1097,10 +1097,12 @@ if __name__ == "__main__":
     # df = pd.read_csv("../data/selector_results_with_lookahead_all_epms_10.csv")
     # print(df["selector_precision"].sum())
 
-    df = pd.read_csv("../data/selector_results_with_lookahead_all_epms_10_sbs.csv")
+    # df = pd.read_csv("../data/selector_results_with_lookahead_all_epms_10_sbs.csv")
 
-    for fid in sorted(df["fid"].unique()):
-        sub = df[df["fid"] == fid]
-        print(f"fid={fid}, SBS sum={sub['sbs_precision'].sum():.16f}, VBS sum={sub['vbs_precisions'].sum():.16f}, Selector sum={sub['selector_precision'].sum():.16f}, Best static sum={sub['static_B650'].sum():.16f}")
+    # for fid in sorted(df["fid"].unique()):
+    #     sub = df[df["fid"] == fid]
+    #     print(f"fid={fid}, SBS sum={sub['sbs_precision'].sum():.16f}, VBS sum={sub['vbs_precisions'].sum():.16f}, Selector sum={sub['selector_precision'].sum():.16f}, Best static sum={sub['static_B650'].sum():.16f}")
 
-    print(f"Overall SBS sum={df['sbs_precision'].sum():.16f}, VBS sum={df['vbs_precisions'].sum():.16f}, Selector sum={df['selector_precision'].sum():.16f}, Best static sum={df['static_B650'].sum():.16f}")
+    # print(f"Overall SBS sum={df['sbs_precision'].sum():.16f}, VBS sum={df['vbs_precisions'].sum():.16f}, Selector sum={df['selector_precision'].sum():.16f}, Best static sum={df['static_B650'].sum():.16f}")
+
+    plot_closed_gap_emps(results)

@@ -393,11 +393,204 @@ def plot_selector_dashboard(
 
     return fig
 
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.io as pio
+import os
+
+def plot_selector_dashboard_with_convergence(
+    df: pd.DataFrame,
+    df_algos: pd.DataFrame,
+    top_fids: tuple[int, int] = (1, 12),
+    save_pdf: str | None = "selector_dashboard_with_convergence.pdf",
+    width: int = 1200,
+    height: int = 980,
+    font_family: str = "Latin Modern Roman",
+    row_heights: tuple[float, float, float] = (0.33, 0.29, 0.29),
+    vertical_spacing: float = 0.06,
+    convergence_base_path: str = "../data/convergence_plot_data",
+    selector_results_path: str = "../data/selector_performance_data/selector_results_with_lookahead_all_epms_10.csv",
+):
+    pio.kaleido.scope.mathjax = None
+
+    # ----------------------------
+    # Inputs / validation
+    # ----------------------------
+    if len(top_fids) != 2:
+        raise ValueError("top_fids must contain exactly two function ids, e.g. (3, 12).")
+
+    top_fid_left, top_fid_right = int(top_fids[0]), int(top_fids[1])
+    fids = sorted(df["fid"].dropna().astype(int).unique().tolist())
+
+    # ----------------------------
+    # Load data
+    # ----------------------------
+    conv_df = pd.read_csv(f"{convergence_base_path}/Selector_mean_per_fid.csv")
+    conv_a1 = pd.read_csv(f"{convergence_base_path}/A1_mean_per_fid.csv")
+    conv_sbs = pd.read_csv(f"{convergence_base_path}/SBS_mean_per_fid.csv")
+    conv_b150 = pd.read_csv(f"{convergence_base_path}/B150_mean_per_fid.csv")
+    df_res = pd.read_csv(selector_results_path)
+
+    for _df in (conv_df, conv_a1, conv_sbs, conv_b150):
+        _df["eval"] = _df["eval"].astype(int)
+
+    # ----------------------------
+    # Helpers for convergence
+    # ----------------------------
+    def get_y_range(fid: int):
+        sub_list = [
+            conv_df[conv_df["fid"] == fid],
+            conv_a1[conv_a1["fid"] == fid],
+            conv_sbs[conv_sbs["fid"] == fid],
+            conv_b150[conv_b150["fid"] == fid]
+        ]
+        upper_candidates = []
+        lower_candidates = []
+        for s in sub_list:
+            mask = (s["mean_raw_y"] > 0)
+            if fid != 12:
+                mask &= (s["eval"] >= 150)
+            upper_candidates.extend(s.loc[mask, "mean_raw_y"].tolist())
+            lower_candidates.extend(s.loc[s["mean_raw_y"] > 0, "mean_raw_y"].tolist())
+        
+        if not upper_candidates or not lower_candidates: return None
+        y_max, y_min = max(upper_candidates), min(lower_candidates)
+        if y_min >= y_max: y_min = y_max / 10.0
+        return [np.log10(y_min), np.log10(y_max)]
+
+    def get_switch_stats(fid: int):
+        vals = df_res.loc[df_res["fid"] == fid, "selector_switch_budget"].dropna()
+        if len(vals) == 0: return None, None, None
+        return vals.mean(), vals.quantile(0.25), vals.quantile(0.75)
+
+    def add_convergence_subplot(fig, fid: int, row: int, col: int, showlegend: bool):
+        sub_list = [
+            (conv_df[conv_df["fid"] == fid], "Dynamic selector", "royalblue"),
+            (conv_a1[conv_a1["fid"] == fid], "A1", "firebrick"),
+            (conv_sbs[conv_sbs["fid"] == fid], "SBS", "darkgreen"),
+            (conv_b150[conv_b150["fid"] == fid], "Kostovska et al.", "darkorange")
+        ]
+
+        for d, name, color in sub_list:
+            fig.add_trace(
+                go.Scatter(
+                    x=d["eval"], y=d["mean_raw_y"], mode="lines",
+                    line=dict(color=color), name=name,
+                    showlegend=showlegend, legendgroup="conv", legend="legend"
+                ),
+                row=row, col=col
+            )
+
+        m, q1, q3 = get_switch_stats(fid)
+        if m is not None:
+            fig.add_vline(x=m, line=dict(color="black", width=2), row=row, col=col)
+            for q in [q1, q3]:
+                fig.add_vline(x=q, line=dict(color="black", width=2, dash="dot"), row=row, col=col)
+
+        fig.update_xaxes(
+            range=[0, 1000] if fid == 12 else [150, 1000], showline=True, linewidth=1.2,
+            linecolor="black", ticks="outside", showgrid=True, gridcolor="white",
+            tickfont=dict(size=14, family=font_family, color="black"), row=row, col=col
+        )
+        fig.update_yaxes(
+            type="log", range=get_y_range(fid), showline=True, linewidth=1.2,
+            linecolor="black", ticks="outside", tickformat=".0e", showgrid=True,
+            gridcolor="white", tickfont=dict(size=14, family=font_family, color="black"),
+            nticks=5, row=row, col=col
+        )
+
+    # ----------------------------
+    # Middle/Bottom Data Prep
+    # ----------------------------
+    algo_colors = {"BFGS": "#1f77b4", "Non-elitist": "#ff7f0e", "DE": "#2ca02c", 
+                   "PSO": "#d62728", "MLSL": "#9467bd", "Elitist": "#8c564b"}
+    display_name = {"Elitist": "CMA-ES, elitist", "Non-elitist": "CMA-ES, non-elitist"}
+
+    df_alg = df_algos.copy()
+    df_alg["fid"] = pd.to_numeric(df_alg["fid"], errors="coerce").astype(int)
+    counts = df_alg.groupby(["fid", "selector_algorithm"]).size().rename("n").reset_index()
+    mid_wide = counts.pivot(index="fid", columns="selector_algorithm", values="n").fillna(0)
+    mid_wide = mid_wide.div(mid_wide.sum(axis=1), axis=0).reindex(index=fids).fillna(0)
+
+    # ----------------------------
+    # Build Figure
+    # ----------------------------
+    fig = make_subplots(
+        rows=3, cols=2,
+        specs=[[{}, {}], [{"colspan": 2}, None], [{"colspan": 2}, None]],
+        row_heights=list(row_heights), vertical_spacing=vertical_spacing,
+        horizontal_spacing=0.08, subplot_titles=[f"f{top_fid_left}", f"f{top_fid_right}", "", ""]
+    )
+
+    # Row 1
+    add_convergence_subplot(fig, top_fid_left, 1, 1, True)
+    add_convergence_subplot(fig, top_fid_right, 1, 2, False)
+
+    # Row 2
+    for algo in [a for a in algo_colors if a in mid_wide.columns]:
+        fig.add_trace(
+            go.Bar(
+                x=fids, y=mid_wide[algo], name=display_name.get(algo, algo),
+                marker=dict(color=algo_colors[algo]), width=0.86, opacity=0.9,
+                legendgroup="middle", legend="legend2"
+            ),
+            row=2, col=1
+        )
+
+    # Row 3 (Boxplots)
+    for i, fid in enumerate(fids):
+        vals = df.loc[df["fid"] == fid, "selector_switch_budget"].dropna()
+        fig.add_trace(
+            go.Box(
+                y=vals, x=[fid]*len(vals), name="Switching Budget",
+                boxpoints=False, width=0.55, line=dict(color="black", width=2.5),
+                fillcolor="royalblue", opacity=0.75, marker=dict(color="royalblue"),
+                showlegend=False,
+                hovertemplate=f"fid={fid}<br>switch=%{{y:.2f}}<extra></extra>"
+            ),
+            row=3, col=1
+        )
+
+    # ----------------------------
+    # Final Layout & Styling
+    # ----------------------------
+    common_x = dict(tickmode="array", tickvals=fids, range=[min(fids)-0.5, max(fids)+0.5], 
+                    showline=True, linecolor="black", linewidth=1, showgrid=True, 
+                    gridcolor="black", gridwidth=0.5, zeroline=False)
+
+    fig.update_xaxes(row=2, col=1, **{**common_x, "showticklabels": True})
+    fig.update_xaxes(row=3, col=1, title_text="BBOB function", title_standoff=12, **common_x)
+    
+    fig.update_yaxes(title_text="Proportion of selected algorithms", range=[0, 1], gridcolor="black", row=2, col=1)
+    fig.update_yaxes(title_text="Switching budget", range=[0, 1050], gridcolor="black", zerolinecolor="black", row=3, col=1)
+
+    # Annotations
+    fig.add_annotation(text="Evaluations", x=0.205, y=0.772, xref="paper", yref="paper", showarrow=False, font=dict(size=18, family=font_family))
+    fig.add_annotation(text="Evaluations", x=0.825, y=0.772, xref="paper", yref="paper", showarrow=False, font=dict(size=18, family=font_family))
+    fig.add_annotation(text="Mean regret", x=-0.005, y=0.95, xref="paper", yref="paper", xshift=-55, textangle=-90, showarrow=False, font=dict(size=18, family=font_family))
+
+    fig.update_layout(
+        width=width, height=height, barmode="stack",
+        font=dict(family=font_family, size=16, color="black"),
+        paper_bgcolor="white", plot_bgcolor="rgb(230,230,230)",
+        margin=dict(l=70, r=20, t=40, b=40),
+        legend=dict(x=0.98, y=0.98, xanchor="right", orientation="h", bgcolor="rgba(255,255,255,0.7)", bordercolor="black", borderwidth=1, font=dict(size=14)),
+        legend2=dict(x=0.4575, y=0.7, xanchor="center", orientation="h", bgcolor="rgba(255,255,255,0.3)", bordercolor="black", borderwidth=1, font=dict(size=14)),
+        #legend3=dict(x=0.02, y=0.06, xanchor="left", orientation="v", bgcolor="rgba(255,255,255,0.7)", bordercolor="black", borderwidth=1, font=dict(size=14))
+    )
+
+    if save_pdf:
+        fig.write_image(save_pdf, format="pdf")
+
+    return fig
+
 if __name__ == "__main__":
-    df = pd.read_csv("../data/selector_results_with_lookahead_all_epms_10_sbs.csv")
-    df_algos = pd.read_csv("../data/selector_results_with_lookahead_all_epms_10_sbs.csv")
+    df = pd.read_csv("../data/selector_performance_data/selector_results_with_lookahead_all_epms_10_sbs.csv")
+    df_algos = pd.read_csv("../data/selector_performance_data/selector_results_with_lookahead_all_epms_10_sbs.csv")
     df_prec = pd.read_csv("../data/A2_precisions_test.csv")
-    plot_selector_dashboard(df, df_algos, save_pdf="../figures/selector_dashboard.pdf")
+    plot_selector_dashboard_with_convergence(df, df_algos, top_fids=(11, 15), row_heights=(0.2,0.33,0.33), height=1000, vertical_spacing=0.06)
 
     # add sbs_precision column to df_algos
     # for each (fid,iid,rep), it is the precision of (BFGS, 650)
