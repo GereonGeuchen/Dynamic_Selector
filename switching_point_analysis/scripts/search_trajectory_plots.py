@@ -130,97 +130,158 @@ def plot_search_trajectories(csv_path, output_folder):
 import os
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import plotly.io as pio
+
 
 def plot_current_best_progress(csv_path, output_folder):
     """
-    For each (fid, iid, rep), plot how current_best progresses over evaluations.
+    For each (fid, iid, rep), create one Plotly figure showing the progression of
+    current_best over evaluations.
+
     - x-axis: evaluations
-    - y-axis: current_best (log10 scale)
-    - only plot every 8th evaluation (since current_best changes only then)
-    - mark evaluations where 'optimal' is True with a star marker
+    - y-axis: current_best on log scale
+    - plot every evaluation
+    - highlight rows with is_optimal == True using star markers
     - save plots in subfolders per fid inside output_folder
     """
 
+    pio.kaleido.scope.mathjax = None
     os.makedirs(output_folder, exist_ok=True)
 
     df = pd.read_csv(csv_path)
 
     # Ensure correct dtypes
-    df['fid'] = df['fid'].astype(int)
-    df['iid'] = df['iid'].astype(int)
-    df['rep'] = df['rep'].astype(int)
-    df['evaluations'] = df['evaluations'].astype(int)
+    df["fid"] = df["fid"].astype(int)
+    df["iid"] = df["iid"].astype(int)
+    df["rep"] = df["rep"].astype(int)
+    df["evaluations"] = df["evaluations"].astype(int)
+    df["raw_y"] = df["raw_y"].astype(float)
+    df["current_best"] = df["current_best"].astype(float)
 
-    # Make sure 'optimal' is boolean
-    if df['optimal'].dtype != bool:
-        df['optimal'] = df['optimal'].astype(str).str.lower().isin(['true', '1'])
+    # Use is_optimal, not optimal
+    if "is_optimal" not in df.columns:
+        raise ValueError("Expected column 'is_optimal' in input file.")
 
-    # Loop over each run
-    for (fid, iid, rep), grp in df.groupby(['fid', 'iid', 'rep']):
-        grp = grp.sort_values('evaluations')
+    if df["is_optimal"].dtype != bool:
+        df["is_optimal"] = df["is_optimal"].astype(str).str.lower().isin(["true", "1"])
 
-        # --- only keep every 8th evaluation ---
-        # we base this on the first evaluation in this group
-        first_eval = grp['evaluations'].iloc[0]
-        mask_every_8 = ((grp['evaluations'] - first_eval) % 8 == 0)
-        grp_sub = grp[mask_every_8]
+    # Avoid log-scale problems
+    df["current_best_plot"] = df["current_best"].clip(lower=1e-12)
 
-        if grp_sub.empty:
-            continue  # nothing to plot
+    for (fid, iid, rep), grp in df.groupby(["fid", "iid", "rep"], sort=False):
+        grp = grp.sort_values("evaluations").copy()
 
-        evals = grp_sub['evaluations'].to_numpy()
-        curr_best = grp_sub['current_best'].to_numpy()
-        is_optimal = grp_sub['optimal'].to_numpy()
+        if grp.empty:
+            continue
 
-        # --- per-fid folder ---
         fid_folder = os.path.join(output_folder, f"fid_{fid}")
         os.makedirs(fid_folder, exist_ok=True)
 
-        fig, ax = plt.subplots(figsize=(7, 5))
+        y_vals = grp["current_best_plot"]
+        y_min = y_vals.min()
+        y_max = y_vals.max()
 
-        # Line plot (no scatter) for the curve
-        ax.plot(
-            evals,
-            curr_best,
-            linestyle='-',
-            marker=None,   # no markers for regular points
-            linewidth=1.7
+        if y_min <= 0:
+            y_min = 1e-12
+        if y_max <= 0:
+            y_max = 1e-11
+        if y_min >= y_max:
+            y_min = y_max / 10.0
+
+        y_range = [np.log10(y_min), np.log10(y_max)]
+
+        fig = go.Figure()
+
+        # Main trajectory line
+        fig.add_trace(
+            go.Scatter(
+                x=grp["evaluations"],
+                y=grp["current_best_plot"],
+                mode="lines",
+                line=dict(color="royalblue", width=2),
+                name="Current best",
+                showlegend=True,
+            )
         )
 
-        # Mark optimal points with stars (still using plot, not scatter)
-        if is_optimal.any():
-            evals_opt = evals[is_optimal]
-            curr_best_opt = curr_best[is_optimal]
-            ax.plot(
-                evals_opt,
-                curr_best_opt,
-                linestyle='None',
-                marker='*',
-                markersize=10,
-                markeredgecolor='black'
+        # Optimal points as stars
+        grp_opt = grp[grp["is_optimal"]]
+        if not grp_opt.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=grp_opt["evaluations"],
+                    y=grp_opt["current_best_plot"],
+                    mode="markers",
+                    marker=dict(
+                        symbol="star",
+                        size=11,
+                        color="royalblue",
+                        line=dict(color="black", width=1),
+                    ),
+                    name="Optimal interval",
+                    showlegend=True,
+                )
             )
 
-        ax.set_xlabel('Evaluations')
-        ax.set_ylabel('Current best (log10 scale)')
+        fig.update_layout(
+            width=700,
+            height=450,
+            font=dict(family="Latin Modern Roman", size=14, color="black"),
+            margin=dict(l=80, r=30, t=40, b=60),
+            plot_bgcolor="rgb(230,230,230)",
+            paper_bgcolor="white",
+            legend=dict(
+                x=0.98,
+                y=0.98,
+                xanchor="right",
+                yanchor="top",
+                bgcolor="rgba(255,255,255,0.8)",
+                bordercolor="black",
+                borderwidth=1,
+            ),
+            title=dict(
+                text=f"fid={fid}, iid={iid}, rep={rep}",
+                x=0.5,
+                xanchor="center",
+            ),
+        )
 
-        # log10 y-scale
-        ax.set_yscale('log', base=10)
+        fig.update_xaxes(
+            title="Evaluations",
+            range=[grp["evaluations"].min(), grp["evaluations"].max()],
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            ticks="outside",
+            tickcolor="black",
+            showgrid=True,
+            gridcolor="white",
+            tickfont=dict(size=24, family="Latin Modern Roman", color="black"),
+            title_font=dict(size=24, family="Latin Modern Roman", color="black"),
+        )
 
-        # ensure the scale goes down to 1e-12
-        # ax.set_ylim(bottom=1e-14)
+        fig.update_yaxes(
+            title="Current best regret",
+            type="log",
+            range=y_range,
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            ticks="outside",
+            tickcolor="black",
+            tickformat=".0e",
+            showgrid=True,
+            gridcolor="white",
+            tickfont=dict(size=24, family="Latin Modern Roman", color="black"),
+            title_font=dict(size=24, family="Latin Modern Roman", color="black"),
+        )
 
-        ax.set_title(f'Current best progression\nfid={fid}, iid={iid}, rep={rep}')
-        ax.grid(True, which='both', linestyle='--', alpha=0.4)
-
-        filename = f"current_best_fid{fid}_iid{iid}_rep{rep}.png"
+        filename = f"current_best_fid{fid}_iid{iid}_rep{rep}.pdf"
         save_path = os.path.join(fid_folder, filename)
-
-        plt.tight_layout()
-        plt.savefig(save_path, dpi=150)
-        plt.close(fig)
+        fig.write_image(save_path)
 
         print(f"Processed current best for fid={fid}, iid={iid}, rep={rep}")
 
-plot_current_best_progress("../data/A1_B1000_5D_with_optimal_last.csv",
-                         "../results/current_best_last")
+plot_current_best_progress("../data/A1_B1000_5D_with_current_best_with_is_optimal_all_and_x.csv",
+                         "../results/current_best_with_optimal_points_all")
