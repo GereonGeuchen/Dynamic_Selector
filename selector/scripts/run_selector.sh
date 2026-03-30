@@ -16,16 +16,18 @@ for i in $(seq 0 19); do
   EPMS+=($((i)))
 done
 
+EPMS+=(-1)
+
 for NUM_LOOKAHEAD_EPMS in "${EPMS[@]}"; do
 
 sbatch <<EOF
 #!/bin/bash
 #SBATCH -A p0026688
-#SBATCH --job-name=selector_lookahead_algo_features_${NUM_LOOKAHEAD_EPMS}_normalized_afterwards
-#SBATCH --output=${WORKDIR}/logs/selector_lookahead_algo_features_${NUM_LOOKAHEAD_EPMS}_normalized_afterwards.out
-#SBATCH --error=${WORKDIR}/logs/selector_lookahead_algo_features_${NUM_LOOKAHEAD_EPMS}_normalized_afterwards.err
+#SBATCH --job-name=selector_lookahead_${NUM_LOOKAHEAD_EPMS}_auc
+#SBATCH --output=${WORKDIR}/logs/selector_lookahead_${NUM_LOOKAHEAD_EPMS}_auc.out
+#SBATCH --error=${WORKDIR}/logs/selector_lookahead_${NUM_LOOKAHEAD_EPMS}_auc.err
 #SBATCH --time=10:00:00
-#SBATCH --mem=4G
+#SBATCH --mem=12G
 #SBATCH --cpus-per-task=1
 
 # Go to the working directory

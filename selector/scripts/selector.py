@@ -5,45 +5,40 @@ import os
 import numpy as np
 import warnings
 import sys
+from asf.predictors import RandomForestRegressorWrapper
 
 USE_ALGO_FEATURES = False  # Whether to use the ELA features for the performance models or not, will be set from command line argument
 NUM_LOOKAHEAD_EPMS = 0  # This will be set from command line argument
 
 ### Will be overwritten by command line arguments, but set to some default values for now
-SELECTOR_MODEL_DIR = "../data/trained_models/switching_models_lookahead"
+SWITCHING_MODEL_DIR = "../data/trained_models/untuned_models/switching_models_lookahead_untuned"
 SAVE_PATH = "../results/selector_results_with_lookahead_test.csv"
 ###
 
-PERFORMANCE_MODEL_DIR = "../data/trained_models/algo_performance_models_trained_algo_features"
+SELECTOR_MODEL_DIR = "../data/trained_models/algo_performance_models_trained_algo_features"
 ELA_DIR = "../data/A1_data_ela_test_normalized"
 PRECISION_FILE = "../data/A2_precisions_test.csv"
 BUDGETS = list(range(50, 1001, 50))
-LOOKAHEAD_MODELS_DIRECTORY = "../data/trained_models/lookahead_models_all_epms_afterwards_normalized_trained"
+LOOKAHEAD_MODELS_DIRECTORY = "../data/trained_models/lookahead_models_all_epms_trained"
+
 
 class SwitchingSelector:
-    def __init__(self, selector_model_dir=SELECTOR_MODEL_DIR, performance_model_dir=PERFORMANCE_MODEL_DIR, lookahead_models_directory=LOOKAHEAD_MODELS_DIRECTORY):
+    def __init__(self, switching_model_dir=SWITCHING_MODEL_DIR, selector_model_dir=SELECTOR_MODEL_DIR, lookahead_models_directory=LOOKAHEAD_MODELS_DIRECTORY):
        
         self.switching_prediction_models = {}
         self.performance_models = {}
 
+        switching_model_dir = Path(switching_model_dir)
         selector_model_dir = Path(selector_model_dir)
-        performance_model_dir = Path(performance_model_dir)
         print("Loading models...")
+        print(f"Switching model dir: {switching_model_dir}")
         print(f"Selector model dir: {selector_model_dir}")
-        print(f"Performance model dir: {performance_model_dir}")
         # Load switching predictor models
-        for model_path in selector_model_dir.glob("switching_model_B*_trained.pkl"):
-            budget = int(model_path.stem.split("_")[2][1:])  # e.g., selector_model_B500 → 500
+        for model_path in switching_model_dir.glob("switching_model_B*_trained.pkl"):
+            budget = int(model_path.stem.split("_")[2][1:])  # e.g., switching_model_B500 → 500
             self.switching_prediction_models[budget] = joblib.load(model_path)
             print(self.switching_prediction_models[budget].model_class.get_params())
             print(f"Loaded switching model for budget {budget}")
-
-        # Load performance predictors
-        for model_path in performance_model_dir.glob("selector_B*_trained.pkl"):
-            budget = int(model_path.stem.split("_")[1][1:])  # e.g., performance_B1000_model → 1000
-            self.performance_models[budget] = joblib.load(model_path)
-            print(f"Loaded performance model for budget {budget}: ")
-            print(self.performance_models[budget].regressors[0].model_class.get_params())
 
         # Load lookahead models if provided
         if lookahead_models_directory:
@@ -56,6 +51,15 @@ class SwitchingSelector:
                     self.lookahead_models[budget, i] = joblib.load(model_path)
                     print(f"Loaded lookahead model for budget {budget, i}: ")
                     print(self.lookahead_models[budget, i].model_class.get_params())
+
+        # Load performance predictors
+        for model_path in selector_model_dir.glob("selector_B*_trained.pkl"):
+            budget = int(model_path.stem.split("_")[1][1:])  # e.g., selector_B1000_model → 1000
+            self.performance_models[budget] = joblib.load(model_path)
+            print(f"Loaded performance model for budget {budget}: ")
+            print(self.performance_models[budget].regressors[0].model_class.get_params())
+
+        
 
     def simulate_single_run(self, fid, iid, rep, ela_dir=ELA_DIR, precision_file=PRECISION_FILE, budgets=BUDGETS):
 
@@ -362,30 +366,30 @@ class SwitchingSelector:
 if __name__ == "__main__":
 
     #Read number of EPMs from command line argument
-    # NUM_LOOKAHEAD_EPMS = int(sys.argv[1]) if len(sys.argv) > 1 else 0
-    NUM_LOOKAHEAD_EPMS = -1
+    NUM_LOOKAHEAD_EPMS = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+    # NUM_LOOKAHEAD_EPMS = 2
 
     if USE_ALGO_FEATURES:
-        SELECTOR_MODEL_DIR = f"../data/trained_models/switching_models_all_epms_algo_features_normalized_afterwards/switching_models_lookahead_algo_features_{NUM_LOOKAHEAD_EPMS}_normalized_afterwards"
+        SWITCHING_MODEL_DIR = f"../data/trained_models/switching_models_all_epms_algo_features_normalized_afterwards/switching_models_lookahead_algo_features_{NUM_LOOKAHEAD_EPMS}_normalized_afterwards"
         SAVE_PATH = f"../results/all_epms_algo_features_normalized_afterwards/selector_results_with_lookahead_all_epms_algo_features_{NUM_LOOKAHEAD_EPMS}.csv"
     else:
-        SELECTOR_MODEL_DIR = f"../data/trained_models/switching_models_lookahead_all_epms/switching_models_lookahead_{NUM_LOOKAHEAD_EPMS}"
-        SAVE_PATH = f"../results/all_epms/selector_results_with_lookahead_all_epms_{NUM_LOOKAHEAD_EPMS}.csv"
+        SWITCHING_MODEL_DIR = f"../data/trained_models/auc/switching_models_lookahead_auc_{NUM_LOOKAHEAD_EPMS}"
+        SAVE_PATH = f"../results/all_epms_auc/selector_results_with_lookahead_all_epms_{NUM_LOOKAHEAD_EPMS}.csv"
 
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         selector = SwitchingSelector(
+            switching_model_dir=SWITCHING_MODEL_DIR,
             selector_model_dir=SELECTOR_MODEL_DIR,
-            performance_model_dir=PERFORMANCE_MODEL_DIR,
             lookahead_models_directory=LOOKAHEAD_MODELS_DIRECTORY,
         )
-        # selector.evaluate_selector_to_csv(
-        #     fids=list(range(1, 25)),
-        #     iids=[6, 7],
-        #     reps=list(range(20)),
-        #     save_path=SAVE_PATH,
-        #     ela_dir=ELA_DIR,
-        #     precision_file=PRECISION_FILE
-        # )
-        selector.record_B150(ela_dir=ELA_DIR, precision_file=PRECISION_FILE)
+        selector.evaluate_selector_to_csv(
+            fids=list(range(1, 25)),
+            iids=[6, 7],
+            reps=list(range(20)),
+            save_path=SAVE_PATH,
+            ela_dir=ELA_DIR,
+            precision_file=PRECISION_FILE
+        )
+        # selector.record_B150(ela_dir=ELA_DIR, precision_file=PRECISION_FILE)

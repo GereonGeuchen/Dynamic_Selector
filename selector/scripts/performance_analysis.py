@@ -41,11 +41,41 @@ def print_performances(df: pd.DataFrame):
         #     print(f"Static budget {budget} closed gap: {(total_precision - sbs_sum) / (vbs_sum - sbs_sum)}")
             # print(f"Static budget {budget} closed gap (best switching): {(total_precision - sbs_sum) / (sum_best_switching - sbs_sum)}")
 
+def permutation_test_selector_vs_static(df):
+
+    
+    selector = df['selector_precision'].values
+    budgets = [50*i for i in range(1, 21) ]
+    # budgets = [80]
+    for budget in budgets:
+        static = df[f'static_B{budget}'].values
+
+        # Compute observed mean difference
+        observed_diff = np.mean(selector - static)
+        print(f"Observed mean difference: {observed_diff:.6f}")
+
+        # Use scipy's permutation_test
+        res = permutation_test(
+            (selector, static),
+            statistic=lambda x, y: np.mean(x - y),
+            permutation_type='samples',
+            vectorized=False,
+            n_resamples=10000,
+            alternative='less',
+            random_state=42
+        )
+
+        print(f"P-value (selector < static) for budget {budget}: {res.pvalue:.6f}")
+
 if __name__== "__main__":
-    # for i in range(0, 20):
-    #     df = pd.read_csv(f"../results/all_epms_normalized_afterwards/selector_results_with_lookahead_all_epms_{i}.csv")
-    #     print(f"=== Results for lookahead with {i} EPMs ===")
-    #     print_performances(df)
+    for i in range(0, 20):
+        df = pd.read_csv(f"../results/all_epms_auc/selector_results_with_lookahead_all_epms_{i}.csv")
+        print(f"=== Results for lookahead with {i} EPMs ===")
+        print_performances(df)
+
+    # df = pd.read_csv(f"../results/all_epms/selector_results_with_lookahead_all_epms_10.csv")
+    # print_performances(df)
+    # permutation_test_selector_vs_static(df)
     
     # for i in range(0, 20):
     #     df = pd.read_csv(f"../results/all_epms_algo_features_normalized_afterwards/selector_results_with_lookahead_all_epms_algo_features_{i}.csv")
@@ -53,5 +83,5 @@ if __name__== "__main__":
     #     print_performances(df)
     # df = pd.read_csv(f"../results/selector_results_with_algo_features.csv")
     # print_performances(df)
-    df = pd.read_csv(f"../results/all_epms/selector_results_with_lookahead_all_epms_-1.csv")
-    print_performances(df)
+    # df = pd.read_csv(f"../results/all_epms/selector_results_with_lookahead_all_epms_-1.csv")
+    # print_performances(df)
