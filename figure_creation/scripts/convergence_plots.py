@@ -8,9 +8,9 @@ import math
 
 import pandas as pd
 
-def aggregate_runs():
+def aggregate_runs(input_path, output_dir):
     # Load file
-    df = pd.read_csv("../data/A2_run_data_test/A2_BFGS_B650_5D.csv")
+    df = pd.read_csv(input_path)
 
     # Make sure eval is integer
     df["eval"] = df["eval"].astype(int)
@@ -51,10 +51,13 @@ def aggregate_runs():
         .rename(columns={"raw_y": "mean_raw_y"})
     )
 
-    result.to_csv("../data/A1_mean_per_fid_eval_sbs.csv", index=False)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
 
-def create_convergence_file():
-    df_selector = pd.read_csv("../data/B150_selector_choices.csv")
+    result.to_csv(f"{output_dir}/expanded_convergence_data.csv", index=False)
+
+def create_convergence_file(input_path, output_dir):
+    df_selector = pd.read_csv(input_path)
 
 
     # res is empty dataframe with columns (fid,iid,rep,eval,raw_y)
@@ -64,8 +67,8 @@ def create_convergence_file():
         fid = row["fid"]
         iid = row["iid"]
         rep = row["rep"]
-        switch_budget = 150 # row["selector_switch_budget"]
-        algo = row["selector_algorithm"]
+        switch_budget = row["selector_switch_budget"]
+        algo = row["selector_algorith"]
         run_df = pd.read_csv(f"../data/A2_run_data_test/A2_{algo}_B{switch_budget}_5D.csv")
         run_df = run_df[run_df["fid"] == fid]
         run_df = run_df[run_df["iid"] == iid]
@@ -76,10 +79,16 @@ def create_convergence_file():
 
     res["eval"] = res["eval"].astype(int)
     res["raw_y"] = res["raw_y"].astype(float)
-    res.to_csv("../data/convergence_data_B150.csv", index=False)
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+
+    res.to_csv(f"{output_dir}/convergence_data.csv", index=False)
 
 def plot_convergence_data(
     save_dir: str = "../figures/convergence_plots",
+    df_res_path: str = "../data/selector_performance_data/selector_results_with_lookahead_all_epms_10.csv",
+    selector_mean_per_fid_path: str = "../data/convergence_plot_data/Selector_mean_per_fid.csv",
     combined: bool = False,
     combined_path: str = "../figures/convergence_plots/convergence_all.pdf",
 ):
@@ -89,9 +98,9 @@ def plot_convergence_data(
 
     # Load data
     base_path = "../data/convergence_plot_data"
-    df = pd.read_csv(f"{base_path}/Selector_mean_per_fid.csv")
+    df_res = pd.read_csv(df_res_path)
+    df = pd.read_csv(selector_mean_per_fid_path)
     df_a1 = pd.read_csv(f"{base_path}/A1_mean_per_fid.csv")
-    df_res = pd.read_csv("../data/selector_performance_data/selector_results_with_lookahead_all_epms_10.csv")
     df_sbs = pd.read_csv(f"{base_path}/SBS_mean_per_fid.csv")
     df_b150 = pd.read_csv(f"{base_path}/B150_mean_per_fid.csv")
 
@@ -492,7 +501,13 @@ if __name__ == "__main__":
     #         df.loc[(df["fid"] == fid) & (df["eval"] == 1000), "mean_raw_y"] = sub[sub["eval"] == 999]["mean_raw_y"].values[0]
     # df.to_csv("../data/A1_mean_per_fid_eval_sbs.csv", index=False)
 
-    plot_convergence_data(combined=True)
+    # plot_convergence_data(combined=True)
 
-    # aggregate_runs()
-    # create_convergence_file()
+    for i in range(-1, 20):
+        plot_convergence_data(
+            save_dir=f"../figures/convergence_plots/tiebreak_lowest/{i}_lookahead_epms",
+            df_res_path=f"../data/selector_performance_data/tiebreak_lowest/selector_results_with_lookahead_all_epms_{i}.csv",
+            selector_mean_per_fid_path=f"../data/convergence_plot_data/tiebreak_lowest/{i}_lookahead_epms/expanded_convergence_data.csv",
+            combined=True,
+            combined_path=f"../figures/convergence_plots/tiebreak_lowest/{i}_lookahead_epms/convergence_all.pdf"
+        )
