@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/rwthfs/rz/cluster/home/pf657206/Dokumente/Dynamic_Selector/selector/scripts/selector.py", line 382, in <module>
+    selector = SwitchingSelector(
+  File "/rwthfs/rz/cluster/home/pf657206/Dokumente/Dynamic_Selector/selector/scripts/selector.py", line 51, in __init__
+    self.lookahead_models[budget, i] = joblib.load(model_path)
+  File "/home/pf657206/general-env/lib/python3.10/site-packages/joblib/numpy_pickle.py", line 658, in load
+    obj = _unpickle(fobj, filename, mmap_mode)
+  File "/home/pf657206/general-env/lib/python3.10/site-packages/joblib/numpy_pickle.py", line 577, in _unpickle
+    obj = unpickler.load()
+  File "/home/pf657206/general-env/lib/python3.10/pickle.py", line 1211, in load
+    raise EOFError
+EOFError

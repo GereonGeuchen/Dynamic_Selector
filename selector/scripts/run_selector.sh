@@ -23,9 +23,9 @@ for NUM_LOOKAHEAD_EPMS in "${EPMS[@]}"; do
 sbatch <<EOF
 #!/bin/bash
 #SBATCH -A p0026688
-#SBATCH --job-name=selector_lookahead_${NUM_LOOKAHEAD_EPMS}_auc
-#SBATCH --output=${WORKDIR}/logs/selector_lookahead_${NUM_LOOKAHEAD_EPMS}_auc.out
-#SBATCH --error=${WORKDIR}/logs/selector_lookahead_${NUM_LOOKAHEAD_EPMS}_auc.err
+#SBATCH --job-name=selector_lookahead_${NUM_LOOKAHEAD_EPMS}_auc_lowest
+#SBATCH --output=${WORKDIR}/logs/selector_lookahead_${NUM_LOOKAHEAD_EPMS}_auc_lowest.out
+#SBATCH --error=${WORKDIR}/logs/selector_lookahead_${NUM_LOOKAHEAD_EPMS}_auc_lowest.err
 #SBATCH --time=10:00:00
 #SBATCH --mem=12G
 #SBATCH --cpus-per-task=1

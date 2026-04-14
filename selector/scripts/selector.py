@@ -11,15 +11,15 @@ USE_ALGO_FEATURES = False  # Whether to use the ELA features for the performance
 NUM_LOOKAHEAD_EPMS = 0  # This will be set from command line argument
 
 ### Will be overwritten by command line arguments, but set to some default values for now
-SWITCHING_MODEL_DIR = "../data/trained_models/untuned_models/switching_models_lookahead_untuned"
+SWITCHING_MODEL_DIR = "../data/trained_models/untuned_models/auc/switching_models_lookahead_untuned"
 SAVE_PATH = "../results/selector_results_with_lookahead_test.csv"
 ###
 
-SELECTOR_MODEL_DIR = "../data/trained_models/algo_performance_models_trained_algo_features"
+SELECTOR_MODEL_DIR = "../data/trained_models/untuned_models/auc/algo_performance_models_trained_untuned_auc"
 ELA_DIR = "../data/A1_data_ela_test_normalized"
 PRECISION_FILE = "../data/A2_precisions_test.csv"
 BUDGETS = list(range(50, 1001, 50))
-LOOKAHEAD_MODELS_DIRECTORY = "../data/trained_models/lookahead_models_all_epms_trained"
+LOOKAHEAD_MODELS_DIRECTORY = "../data/trained_models/untuned_models/auc/lookahead_models_all_epms_auc"  # Directory where lookahead models are stored, e.g., lookahead_model_B500_t1_untuned_trained.pkl, lookahead_model_B500_t2_untuned_trained.pkl, etc.
 
 
 class SwitchingSelector:
@@ -34,7 +34,7 @@ class SwitchingSelector:
         print(f"Switching model dir: {switching_model_dir}")
         print(f"Selector model dir: {selector_model_dir}")
         # Load switching predictor models
-        for model_path in switching_model_dir.glob("switching_model_B*_trained.pkl"):
+        for model_path in switching_model_dir.glob("switching_model_B*_untuned_trained.pkl"):
             budget = int(model_path.stem.split("_")[2][1:])  # e.g., switching_model_B500 → 500
             self.switching_prediction_models[budget] = joblib.load(model_path)
             print(self.switching_prediction_models[budget].model_class.get_params())
@@ -46,14 +46,14 @@ class SwitchingSelector:
             self.lookahead_models = {}
             for i in range(0, NUM_LOOKAHEAD_EPMS + 1):
                 if USE_ALGO_FEATURES and i == 0: continue  # t0 predictions are already included as algo features
-                for model_path in lookahead_models_directory.glob(f"lookahead_model_B*_t{i}_trained.pkl"):
+                for model_path in lookahead_models_directory.glob(f"lookahead_model_B*_t{i}_untuned_trained.pkl"):
                     budget = int(model_path.stem.split("_")[2][1:])  # e.g., lookahead_model_B500 → 500
                     self.lookahead_models[budget, i] = joblib.load(model_path)
                     print(f"Loaded lookahead model for budget {budget, i}: ")
                     print(self.lookahead_models[budget, i].model_class.get_params())
 
         # Load performance predictors
-        for model_path in selector_model_dir.glob("selector_B*_trained.pkl"):
+        for model_path in selector_model_dir.glob("selector_B*_untuned_trained.pkl"):
             budget = int(model_path.stem.split("_")[1][1:])  # e.g., selector_B1000_model → 1000
             self.performance_models[budget] = joblib.load(model_path)
             print(f"Loaded performance model for budget {budget}: ")
@@ -373,8 +373,8 @@ if __name__ == "__main__":
         SWITCHING_MODEL_DIR = f"../data/trained_models/switching_models_all_epms_algo_features_normalized_afterwards/switching_models_lookahead_algo_features_{NUM_LOOKAHEAD_EPMS}_normalized_afterwards"
         SAVE_PATH = f"../results/all_epms_algo_features_normalized_afterwards/selector_results_with_lookahead_all_epms_algo_features_{NUM_LOOKAHEAD_EPMS}.csv"
     else:
-        SWITCHING_MODEL_DIR = f"../data/trained_models/auc/switching_models_lookahead_auc_{NUM_LOOKAHEAD_EPMS}"
-        SAVE_PATH = f"../results/all_epms_auc/selector_results_with_lookahead_all_epms_{NUM_LOOKAHEAD_EPMS}.csv"
+        SWITCHING_MODEL_DIR = f"../data/trained_models/untuned_models/auc/switching_models_lowest/switching_models_lookahead_untuned_{NUM_LOOKAHEAD_EPMS}"
+        SAVE_PATH = f"../results/auc/lowest/selector_results_with_lookahead_all_epms_{NUM_LOOKAHEAD_EPMS}.csv"
 
 
     with warnings.catch_warnings():
