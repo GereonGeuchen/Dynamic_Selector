@@ -4,10 +4,38 @@ import os
 from functools import reduce
 import numpy as np
 import warnings
+from asf.selectors import PerformanceModel
+from asf.predictors import RandomForestRegressorWrapper
+from ConfigSpace import ConfigurationSpace
 
 SELECTOR_DIR = "../data/models/algo_performance_models_algo_features"
-ELA_TEMPLATE = "../data/ela/A1_data_ela_normalized_with_precisions/A1_B{budget}_5D_ela.csv"
-OUTPUT_DIR = "../data/selector_performances/algo_features_test"
+ELA_TEMPLATE = "../data/auc_data/A1_data_ela_normalised_with_aucs/A1_B{budget}_5D_ela.csv"
+OUTPUT_DIR = "../data/selector_performances/untuned_auc"
+USE_UNTUNED = True
+
+# def rf_constructor(**kwargs):
+#     return RandomForestRegressorWrapper(
+#         init_params={"random_state": 42, **kwargs},
+#     )
+
+def make_default_performance_model():
+    cs = ConfigurationSpace()
+    cs_transform = {}
+
+    cs, cs_transform = PerformanceModel.get_configuration_space(
+        cs=cs,
+        cs_transform=cs_transform,
+        parent_param=None,
+        parent_value=str(PerformanceModel.__name__),
+    )
+
+    default_config = cs.get_default_configuration()
+
+    return PerformanceModel.get_from_configuration(
+        default_config,
+        cs_transform=None,
+        random_state=42,
+    )
 
 def crossvalidated_static_predictions(
     budget,
@@ -42,8 +70,11 @@ def crossvalidated_static_predictions(
         X_test = X.loc[test_keys]
 
         # Load the selector model
-        pipeline = joblib.load(selector_path)
-        selector = pipeline.selector
+        if USE_UNTUNED:
+            selector = make_default_performance_model()
+        else:
+            pipeline = joblib.load(selector_path)
+            selector = pipeline.selector
 
         selector.algorithms = list(y.columns)
         selector.fit(X_train, y_train)
@@ -181,5 +212,5 @@ if __name__ == "__main__":
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         build_full_crossvalidated_table(
-            "../data/A2_precisions.csv"
+            "../data/auc_data/A2_aucs.csv"
         )

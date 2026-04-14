@@ -3,20 +3,28 @@ import joblib
 import numpy as np
 import pandas as pd
 import warnings
+from asf.selectors import PerformanceModel
+from asf.predictors import RandomForestRegressorWrapper
 
-MODEL_DIR = "../data/models/lookahead_models_all_epms_afterwards_normalized_untrained"
-ELA_TEMPLATE = "../data/ela/A1_data_ela_normalized_with_future_performances_20_afterwards/A1_B{budget}_5D_ela.csv"
+MODEL_DIR = "../data/models/lookahead_models_all_epms_untrained"
+ELA_TEMPLATE = "../data/auc_data/A1_data_ela_with_future_aucs_new_normalisation/A1_B{budget}_5D_ela.csv"
 
-OUTPUT_DIR = "../data/lookahead_performances_all_epms_afterwards_normalized"  # where to save the final CSV with predictions
+OUTPUT_DIR = "../data/lookahead_performances_all_epms_auc_new_normalisation"  # where to save the final CSV with predictions
 OUT_FILE = "predicted_switchpoint_performances_test.csv"
 
 MODEL_TEMPLATE = "lookahead_model_B{budget}_t{t}_untrained.pkl"
+
+USE_UNTUNED = True  # whether to use untrained models (True) or the trained ones (False)
 
 # 0 to 19
 TARGET_COLS = {
     i: f"best_precision_t+{i}" for i in range(0, 20) 
 }
 
+# def rf_constructor(**kwargs):
+#     return RandomForestRegressorWrapper(
+#         init_params={"random_state": 42, **kwargs},
+#     )
 
 def available_ts_for_budget(budget: int):
     end_index = (1000 - budget) // 50
@@ -24,11 +32,19 @@ def available_ts_for_budget(budget: int):
 
 
 def load_factory(model_dir: str, budget: int, t: int):
-    path = os.path.join(model_dir, MODEL_TEMPLATE.format(budget=budget, t=t))
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Missing model factory: {path}")
-    obj = joblib.load(path)
-    return obj
+    if USE_UNTUNED:
+        cs = RandomForestRegressorWrapper.get_configuration_space()
+        config = cs.get_default_configuration()
+        return RandomForestRegressorWrapper.get_from_configuration(
+            config,
+            random_state=42
+        )()
+    else:
+        path = os.path.join(model_dir, MODEL_TEMPLATE.format(budget=budget, t=t))
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Missing model factory: {path}")
+        obj = joblib.load(path)
+        return obj
 
 
 def crossvalidated_switchpoint_predictions(budget: int):
@@ -75,7 +91,6 @@ def crossvalidated_switchpoint_predictions(budget: int):
 
         for t in ts:
             model = load_factory(MODEL_DIR, budget, t)
-            
 
             y_train_t = y_train[f"target_t{t}"].to_numpy()
             good = ~np.isnan(y_train_t)
@@ -87,6 +102,7 @@ def crossvalidated_switchpoint_predictions(budget: int):
                 continue
 
             model.fit(X_train_t, np.log10(y_train_t))
+            print(model.model_class.get_params())
             preds_by_t[t] = np.asarray(model.predict(X_test)).reshape(-1)
 
         # store rows
@@ -126,3 +142,10 @@ if __name__ == "__main__":
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         build_full_crossvalidated_switchpoint_table()
+    # cs = RandomForestRegressorWrapper.get_configuration_space()
+    # config = cs.get_default_configuration()
+    # model =  RandomForestRegressorWrapper.get_from_configuration(
+    #     config,
+    #     random_state=42
+    # )()
+    # print(model.model_class.get_params())

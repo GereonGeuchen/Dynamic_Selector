@@ -14,9 +14,9 @@ mkdir -p "$WORKDIR/logs"
 
 sbatch <<EOF
 #!/bin/bash
-#SBATCH --job-name=performance_lookahead
-#SBATCH --output=${WORKDIR}/logs/performance_lookahead.out
-#SBATCH --error=${WORKDIR}/logs/performance_lookahead.err
+#SBATCH --job-name=performance_lookahead_auc_new_normalisation
+#SBATCH --output=${WORKDIR}/logs/performance_lookahead_auc_new_normalisation.out
+#SBATCH --error=${WORKDIR}/logs/performance_lookahead_auc_new_normalisation.err
 #SBATCH --time=10:00:00
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=1

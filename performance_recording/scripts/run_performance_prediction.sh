@@ -14,9 +14,9 @@ mkdir -p "$WORKDIR/logs"
 
 sbatch <<EOF
 #!/bin/bash
-#SBATCH --job-name=performance_prediction_algo_features_2
-#SBATCH --output=${WORKDIR}/logs/performance_prediction_algo_features_2.out
-#SBATCH --error=${WORKDIR}/logs/performance_prediction_algo_features_2.err
+#SBATCH --job-name=performance_prediction_auc
+#SBATCH --output=${WORKDIR}/logs/performance_prediction_auc.out
+#SBATCH --error=${WORKDIR}/logs/performance_prediction_auc.err
 #SBATCH --time=10:00:00
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=1
