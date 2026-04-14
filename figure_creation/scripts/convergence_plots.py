@@ -503,11 +503,21 @@ if __name__ == "__main__":
 
     # plot_convergence_data(combined=True)
 
-    for i in range(-1, 20):
+    for i in range(17, 20):
         plot_convergence_data(
-            save_dir=f"../figures/convergence_plots/tiebreak_lowest/{i}_lookahead_epms",
-            df_res_path=f"../data/selector_performance_data/tiebreak_lowest/selector_results_with_lookahead_all_epms_{i}.csv",
-            selector_mean_per_fid_path=f"../data/convergence_plot_data/tiebreak_lowest/{i}_lookahead_epms/expanded_convergence_data.csv",
+            save_dir=f"../figures/convergence_plots/auc/lowest/{i}_lookahead_epms",
+            df_res_path=f"../data/selector_performance_data/auc/lowest/selector_results_with_lookahead_all_epms_{i}.csv",
+            selector_mean_per_fid_path=f"../data/convergence_plot_data/auc/lowest/{i}_lookahead_epms/expanded_convergence_data.csv",
             combined=True,
-            combined_path=f"../figures/convergence_plots/tiebreak_lowest/{i}_lookahead_epms/convergence_all.pdf"
+            combined_path=f"../figures/convergence_plots/auc/lowest/{i}_lookahead_epms/convergence_all.pdf"
         )
+        # aggregate_runs(
+        #     input_path=f"../data/convergence_plot_data/auc/lowest/{i}_lookahead_epms/convergence_data.csv",
+        #     output_dir=f"../data/convergence_plot_data/auc/lowest/{i}_lookahead_epms"
+        # )
+        # df = pd.read_csv(f"../data/convergence_plot_data/auc/lowest/{i}_lookahead_epms/expanded_convergence_data.csv")
+        # for fid in df["fid"].unique():
+        #     sub = df[df["fid"] == fid]
+        #     if sub[sub["eval"] == 1000]["mean_raw_y"].values[0] > sub[sub["eval"] == 999]["mean_raw_y"].values[0]:
+        #         df.loc[(df["fid"] == fid) & (df["eval"] == 1000), "mean_raw_y"] = sub[sub["eval"] == 999]["mean_raw_y"].values[0]
+        # df.to_csv(f"../data/convergence_plot_data/auc/lowest/{i}_lookahead_epms/expanded_convergence_data.csv", index=False)
