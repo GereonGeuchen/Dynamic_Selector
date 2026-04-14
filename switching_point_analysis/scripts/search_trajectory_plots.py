@@ -1,11 +1,6 @@
 import os
 import numpy as np
 import pandas as pd
-# mport matplotlib.pyplot as plt
-
-import os
-import numpy as np
-import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
 
@@ -15,14 +10,7 @@ from sklearn.decomposition import PCA
 
 
 def plot_search_trajectories_pca(csv_path, output_folder):
-    """
-    PCA trajectory plots per (fid, iid, rep)
-
-    Changes:
-    - axes automatically scaled (no fixed [-5,5])
-    - no connecting lines (pure scatter)
-    """
-
+    
     pio.kaleido.scope.mathjax = None
     os.makedirs(output_folder, exist_ok=True)
 
@@ -73,12 +61,11 @@ def plot_search_trajectories_pca(csv_path, output_folder):
 
         fig = go.Figure()
 
-        # --- Scatter only (NO lines) ---
         fig.add_trace(
             go.Scatter(
                 x=grp["pc1"],
                 y=grp["pc2"],
-                mode="markers",  # <- changed
+                mode="markers", 
                 marker=dict(
                     size=6,
                     color=grp["evaluations"],
@@ -86,7 +73,6 @@ def plot_search_trajectories_pca(csv_path, output_folder):
                     showscale=True,
                     colorbar=dict(
                         title="Evaluations",
-                        # titlefont=dict(size=18, family="Latin Modern Roman"),
                         tickfont=dict(size=16, family="Latin Modern Roman"),
                     ),
                 ),
@@ -170,24 +156,8 @@ def plot_search_trajectories_pca(csv_path, output_folder):
         fig.write_image(os.path.join(fid_folder, filename))
 
         print(f"Processed PCA trajectory for fid={fid}, iid={iid}, rep={rep}")
-import os
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.io as pio
-
 
 def plot_current_best_progress(csv_path, output_folder):
-    """
-    For each (fid, iid, rep), create one Plotly figure showing the progression of
-    current_best over evaluations.
-
-    - x-axis: evaluations
-    - y-axis: current_best on log scale
-    - plot every evaluation
-    - highlight rows with is_optimal == True using star markers
-    - save plots in subfolders per fid inside output_folder
-    """
 
     pio.kaleido.scope.mathjax = None
     os.makedirs(output_folder, exist_ok=True)
@@ -202,14 +172,9 @@ def plot_current_best_progress(csv_path, output_folder):
     df["raw_y"] = df["raw_y"].astype(float)
     df["current_best"] = df["current_best"].astype(float)
 
-    # Use is_optimal, not optimal
-    if "is_optimal" not in df.columns:
-        raise ValueError("Expected column 'is_optimal' in input file.")
-
     if df["is_optimal"].dtype != bool:
         df["is_optimal"] = df["is_optimal"].astype(str).str.lower().isin(["true", "1"])
 
-    # Avoid log-scale problems
     df["current_best_plot"] = df["current_best"].clip(lower=1e-12)
 
     for (fid, iid, rep), grp in df.groupby(["fid", "iid", "rep"], sort=False):
@@ -237,7 +202,6 @@ def plot_current_best_progress(csv_path, output_folder):
 
         fig = go.Figure()
 
-        # Main trajectory line
         fig.add_trace(
             go.Scatter(
                 x=grp["evaluations"],
@@ -249,7 +213,6 @@ def plot_current_best_progress(csv_path, output_folder):
             )
         )
 
-        # Optimal points as stars
         grp_opt = grp[grp["is_optimal"]]
         if not grp_opt.empty:
             fig.add_trace(
