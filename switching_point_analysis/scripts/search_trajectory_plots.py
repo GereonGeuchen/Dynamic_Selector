@@ -1,132 +1,175 @@
 import os
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+# mport matplotlib.pyplot as plt
 
-def plot_search_trajectories(csv_path, output_folder):
+import os
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.io as pio
+
+from sklearn.decomposition import PCA
+
+
+
+
+def plot_search_trajectories_pca(csv_path, output_folder):
     """
-    Create a PCA-based 2D trajectory plot for each (fid, iid, rep).
+    PCA trajectory plots per (fid, iid, rep)
 
-    Parameters
-    ----------
-    csv_path : str
-        Path to the CSV file with columns:
-        ['fid', 'iid', 'rep', 'evaluations', x0, x1, ..., 'optimal', ...]
-    output_folder : str
-        Folder in which to save the plots.
+    Changes:
+    - axes automatically scaled (no fixed [-5,5])
+    - no connecting lines (pure scatter)
     """
 
-    # Make sure output folder exists
+    pio.kaleido.scope.mathjax = None
     os.makedirs(output_folder, exist_ok=True)
 
-    # Load data
     df = pd.read_csv(csv_path)
 
-    # Ensure basic types
-    df['fid'] = df['fid'].astype(int)
-    df['iid'] = df['iid'].astype(int)
-    df['rep'] = df['rep'].astype(int)
-    df['evaluations'] = df['evaluations'].astype(int)
+    # Types
+    df["fid"] = df["fid"].astype(int)
+    df["iid"] = df["iid"].astype(int)
+    df["rep"] = df["rep"].astype(int)
+    df["evaluations"] = df["evaluations"].astype(int)
 
-    # Make sure 'optimal' is boolean, even if saved as 0/1 or strings
-    if df['optimal'].dtype != bool:
-        df['optimal'] = df['optimal'].astype(str).str.lower().isin(['true', '1'])
+    if df["is_optimal"].dtype != bool:
+        df["is_optimal"] = df["is_optimal"].astype(str).str.lower().isin(["true", "1"])
 
-    # Automatically detect x-columns (x0, x1, x2, ...)
-    x_cols = [c for c in df.columns if c.startswith('x')]
+    x_cols = [c for c in df.columns if c.startswith("x")]
     if len(x_cols) < 2:
-        raise ValueError(f"Need at least 2 x-columns for PCA, found: {x_cols}")
+        raise ValueError(f"Need at least 2 x-columns, found {x_cols}")
 
-    # Helper: simple PCA to 2D using numpy
-    def pca_2d(X):
-        """
-        X: (n_samples, n_features)
-        returns: X projected to 2D (n_samples, 2)
-        """
-        # Center
-        Xc = X - X.mean(axis=0, keepdims=True)
-        # Covariance
-        cov = np.cov(Xc, rowvar=False)
-        # Eigen-decomposition
-        eigvals, eigvecs = np.linalg.eigh(cov)
-        # Sort eigenvectors by eigenvalue descending
-        idx = np.argsort(eigvals)[::-1]
-        W = eigvecs[:, idx[:2]]  # top-2 components
-        # Project
-        return Xc @ W
+    # PCA (correct version with centering)
+    # def pca_2d(X):
+    #     X = np.asarray(X, dtype=float)
+    #     Xc = X - X.mean(axis=0, keepdims=True)
+    #     cov = np.cov(Xc, rowvar=False)
+    #     eigvals, eigvecs = np.linalg.eigh(cov)
+    #     idx = np.argsort(eigvals)[::-1]
+    #     return Xc @ eigvecs[:, idx[:2]]
 
-    # Group by (fid, iid, rep)
-    for (fid, iid, rep), grp in df.groupby(['fid', 'iid', 'rep']):
-        # If too few points, skip
+    for (fid, iid, rep), grp in df.groupby(["fid", "iid", "rep"], sort=False):
+        if iid != 1:
+            continue
+
+        grp = grp.sort_values("evaluations").copy()
+
         if len(grp) < 2:
             continue
-        
-        # --- Create fid-specific subfolder ---
+
+        X = grp[x_cols].to_numpy(dtype=float)
+
+        # sklearn PCA
+        pca = PCA(n_components=2)
+        X_pca = pca.fit_transform(X)
+
+        grp["pc1"] = X_pca[:, 0]
+        grp["pc2"] = X_pca[:, 1]
+
         fid_folder = os.path.join(output_folder, f"fid_{fid}")
         os.makedirs(fid_folder, exist_ok=True)
 
-        # Sort by evaluation index so trajectory is in time order
-        grp = grp.sort_values('evaluations')
+        fig = go.Figure()
 
-        X = grp[x_cols].to_numpy()
-        X_pca = pca_2d(X)
-
-        # Prepare plotting data
-        evals = grp['evaluations'].to_numpy()
-        is_optimal = grp['optimal'].to_numpy()
-
-        # Create figure
-        fig, ax = plt.subplots(figsize=(6, 5))
-
-        # All points: colored by evaluation index (color gradient)
-        sc = ax.scatter(
-            X_pca[:, 0],
-            X_pca[:, 1],
-            c=evals,
-            cmap='viridis',
-            s=25,
-            alpha=0.8
+        # --- Scatter only (NO lines) ---
+        fig.add_trace(
+            go.Scatter(
+                x=grp["pc1"],
+                y=grp["pc2"],
+                mode="markers",  # <- changed
+                marker=dict(
+                    size=6,
+                    color=grp["evaluations"],
+                    colorscale="Viridis",
+                    showscale=True,
+                    colorbar=dict(
+                        title="Evaluations",
+                        # titlefont=dict(size=18, family="Latin Modern Roman"),
+                        tickfont=dict(size=16, family="Latin Modern Roman"),
+                    ),
+                ),
+                name="Trajectory",
+            )
         )
 
-        # Highlight optimal evaluations with star marker
-        if is_optimal.any():
-            X_opt = X_pca[is_optimal]
-            evals_opt = evals[is_optimal]
-            ax.scatter(
-                X_opt[:, 0],
-                X_opt[:, 1],
-                c=evals_opt,
-                cmap='viridis',
-                marker='*',
-                s=120,
-                edgecolors='black',
-                linewidths=0.7
+        # Optimal points
+        grp_opt = grp[grp["is_optimal"]]
+        if not grp_opt.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=grp_opt["pc1"],
+                    y=grp_opt["pc2"],
+                    mode="markers",
+                    marker=dict(
+                        symbol="star",
+                        size=13,
+                        color=grp_opt["evaluations"],
+                        colorscale="Viridis",
+                        showscale=False,
+                        line=dict(color="black", width=1),
+                    ),
+                    name="Optimal iteration",
+                )
             )
 
-        # Colorbar for evaluation index
-        cbar = fig.colorbar(sc, ax=ax)
-        cbar.set_label('Evaluation index')
+        fig.update_layout(
+            width=700,
+            height=450,
+            font=dict(family="Latin Modern Roman", size=14, color="black"),
+            margin=dict(l=80, r=30, t=40, b=60),
+            plot_bgcolor="rgb(230,230,230)",
+            paper_bgcolor="white",
+            legend=dict(
+                x=0.98,
+                y=0.98,
+                xanchor="right",
+                yanchor="top",
+                bgcolor="rgba(255,255,255,0.8)",
+                bordercolor="black",
+                borderwidth=1,
+            ),
+            # title=dict(
+            #     text=f"fid={fid}, iid={iid}, rep={rep}",
+            #     x=0.5,
+            #     xanchor="center",
+            # ),
+        )
 
-        ax.set_xlabel('PC1')
-        ax.set_ylabel('PC2')
-        ax.set_title(f'fid={fid}, iid={iid}, rep={rep}')
+        # --- No fixed range anymore ---
+        fig.update_xaxes(
+            title="PC1",
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            ticks="outside",
+            showgrid=True,
+            gridcolor="white",
+            tickfont=dict(size=24, family="Latin Modern Roman"),
+            title_font=dict(size=24, family="Latin Modern Roman"),
+            zeroline=False,
+        )
 
-        # Save figure
-        filename = f"fid{fid}_iid{iid}_rep{rep}.png"
-        out_path = os.path.join(output_folder, filename)
-        plt.tight_layout()
-        
-        # Save into fid-specific folder
-        filename = f"fid{fid}_iid{iid}_rep{rep}.png"
-        save_path = os.path.join(fid_folder, filename)
-        fig.savefig(save_path, dpi=150)
-        plt.close(fig)
+        fig.update_yaxes(
+            title="PC2",
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            ticks="outside",
+            showgrid=True,
+            gridcolor="white",
+            tickfont=dict(size=24, family="Latin Modern Roman"),
+            title_font=dict(size=24, family="Latin Modern Roman"),
+            zeroline=False,
+            scaleanchor="x",
+            scaleratio=1,
+        )
 
-        print(f"Processed fid={fid}, iid={iid}, rep={rep}")
+        filename = f"search_pca_fid{fid}_iid{iid}_rep{rep}.pdf"
+        fig.write_image(os.path.join(fid_folder, filename))
 
-        # (Optional) print or log where things went
-        # print(f"Saved {out_path}")
-
+        print(f"Processed PCA trajectory for fid={fid}, iid={iid}, rep={rep}")
 import os
 import numpy as np
 import pandas as pd
@@ -170,6 +213,7 @@ def plot_current_best_progress(csv_path, output_folder):
     df["current_best_plot"] = df["current_best"].clip(lower=1e-12)
 
     for (fid, iid, rep), grp in df.groupby(["fid", "iid", "rep"], sort=False):
+        if iid != 1: continue
         grp = grp.sort_values("evaluations").copy()
 
         if grp.empty:
@@ -219,7 +263,7 @@ def plot_current_best_progress(csv_path, output_folder):
                         color="royalblue",
                         line=dict(color="black", width=1),
                     ),
-                    name="Optimal interval",
+                    name="Optimal iteration",
                     showlegend=True,
                 )
             )
@@ -283,5 +327,12 @@ def plot_current_best_progress(csv_path, output_folder):
 
         print(f"Processed current best for fid={fid}, iid={iid}, rep={rep}")
 
-plot_current_best_progress("../data/A1_B1000_5D_with_current_best_with_is_optimal_all_and_x.csv",
-                         "../results/current_best_with_optimal_points_all")
+# plot_current_best_progress("../data/A1_B1000_5D_with_current_best_with_is_optimal_lowest_and_x.csv",
+#                          "../results/current_best_with_optimal_points_lowest")
+
+for word in ["all", "lowest", "highest"]:
+    plot_search_trajectories_pca(f"../data/A1_B1000_5D_with_current_best_with_is_optimal_{word}_and_x.csv",
+                                "../results/search_trajectories_pca_with_optimal_points_" + word)
+    
+    plot_current_best_progress(f"../data/A1_B1000_5D_with_current_best_with_is_optimal_{word}_and_x.csv",
+                            f"../results/current_best_with_optimal_points_{word}")
