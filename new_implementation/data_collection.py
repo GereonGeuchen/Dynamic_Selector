@@ -299,10 +299,12 @@ def calculate_ela_features(evaluations, fid, iid, rep, a1_budget, dim, algname):
     features["fid"] = fid
     features["iid"] = iid
     features["rep"] = rep
-    features["a1_budget"] = a1_budget
-    features["a2_algorithm"] = algname
+    
     # Add high level category based on fid
     features["high_level_category"] = get_hlc_from_fid(fid)
+
+    features["a1_budget"] = a1_budget
+    features["a2_algorithm"] = algname
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -365,27 +367,26 @@ def collect_data(a1_budget, dim):
 
     trigger = ioh.logger.trigger.Always()
 
-    logger = ioh.logger.Analyzer(
-        triggers=[trigger],
-        folder_name=f'./data/raw_evluations/{algname}_B{a1_budget}_{dim}D',
-        algorithm_name=algname,
-        store_positions=True,
-    )
-    tracked_parameters = TrackedParameters()
-    logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])
-
-
-    for A2, algname in zip([MLSL, DE, PSO, BFGS, None, None], ["MLSL", "DE", "PSO", "BFGS", "Non-elitist", "Elitist"]):
-        for fid in range(1, 25):
+    #for A2, algname in zip([DE, MLSL, PSO, BFGS, None, None], ["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]):
+    for A2, algname in zip([None], ["Non-elitist"]):
+        logger = ioh.logger.Analyzer(
+            triggers=[trigger],
+            folder_name=f'./data/raw_evluations/{algname}_B{a1_budget}_{dim}D',
+            algorithm_name=algname,
+            store_positions=True,
+        )
+        tracked_parameters = TrackedParameters()
+        logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])
+        for fid in range(1, 3):
             ela_features = []
-            for iid in range(1, 8):
+            for iid in range(1, 2):
 
                 problem = IOHProblemWrapper(fid, iid, dim, ProblemClass.BBOB)
         
                 # Attach the logger to the problem
                 problem.attach_logger(logger)
 
-                for rep in range(20):
+                for rep in range(5):
                     tracked_parameters.rep = rep
                     tracked_parameters.iid = iid
                     print(f"Running function {fid} instance {iid} repetition {rep} with A2 {algname}, budget {a1_budget}")
@@ -404,15 +405,15 @@ def collect_data(a1_budget, dim):
                         if algname != "Non-elitist" and i <= a1_budget:
                             continue
 
-                        current_evaluations = {i: v for i, v in problem.function_evals.items() if i <= 1000}
-                        ela_features.append(calculate_ela_features(current_evaluations, fid, iid, rep, a1_budget, dim, algname))
+                        current_evaluations = {j: v for j, v in problem.function_evals.items() if j <= i}
+                        ela_features.append(calculate_ela_features(current_evaluations, fid, iid, rep, i, dim, algname))
 
                     # The achieved regret of this specific run is the lowest objective value 
                     # that is within 1000 evals and within bounds
                     evals_to_consider = {i: v for i, v in problem.function_evals.items() if i <= 1000 and np.all(np.abs(v[0]) <= 5)}
                     if evals_to_consider:
                         best_eval = min(evals_to_consider.values(), key=lambda x: x[1])
-                        achieved_regrets[(fid, iid, rep, algname)] = best_eval[1] - problem.optimum.y
+                        achieved_regrets[(fid, iid, rep, a1_budget, algname)] = best_eval[1] - problem.optimum.y
 
                     problem.reset()
                 
@@ -423,11 +424,11 @@ def collect_data(a1_budget, dim):
                 safe_df_to_csv(f'./data/ela_features/{algname}_B{a1_budget}_{dim}D', f"ELA_features.csv", df, append=True)
 
     # Save the achieved regrets to a csv file for later use in model training/tuning
-    regrets_df = pd.DataFrame([{"fid": fid, "iid": iid, "rep": rep, "algname": algname, "achieved_regret": regret} 
-                                for (fid, iid, rep, algname), regret in achieved_regrets.items()])
+    regrets_df = pd.DataFrame([{"fid": fid, "iid": iid, "rep": rep, "a1_budget": a1_budget, "algname": algname, "achieved_regret": regret} 
+                                for (fid, iid, rep, a1_budget, algname), regret in achieved_regrets.items()])
     safe_df_to_csv(f'./data', f'achieved_regrets_B{a1_budget}_{dim}D.csv', regrets_df)
 
 if __name__ == "__main__":
     # Example usage: collect evaluations and ELA features for a1_budget=200 and dimension=5
     # Arguments could also be parsed from command line 
-    collect_data(a1_budget=200, dim=5)
+    collect_data(a1_budget=500, dim=5)
