@@ -9,8 +9,40 @@ import os
 import numpy as np
 import warnings
 import sys
+
 from asf.predictors import RandomForestRegressorWrapper
+from asf.selectors import PerformanceModel
+from ConfigSpace import ConfigurationSpace
+
 from sklearn.preprocessing import MinMaxScaler
+
+def make_default_performance_model():
+    """
+    Creates a default performance model using the default configuration of the PerformanceModel class as specified in ASF.
+
+    Returns
+    -------
+    performance_model: PerformanceModel
+        The created PerformanceModel.
+    """
+    cs = ConfigurationSpace()
+    cs_transform = {}
+
+    cs, cs_transform = PerformanceModel.get_configuration_space(
+        cs=cs,
+        cs_transform=cs_transform,
+        parent_param=None,
+        parent_value=str(PerformanceModel.__name__),
+    )
+
+    default_config = cs.get_default_configuration()
+
+    return PerformanceModel.get_from_configuration(
+        default_config,
+        cs_transform=None,
+        random_state=42,
+    )
+
 
 def normalise_selection_model_data(selection_model_data) -> dict:
     """
@@ -71,9 +103,8 @@ def create_selection_model_data(data_path: str, switching_budgets: list, normali
 
     Returns
     -------
-    selection_model_data: List[pd.DataFrame]
-        A list of dataframes, one for each switching budget. Each dataframe contains the ELA features and the achieved regrets 
-        for the corresponding switching budget, which are used to fit the selection model for that switching budget.
+    selection_model_data: dict
+        A dictionary where the keys are the switching budgets and the values are the corresponding selection model data as pandas DataFrames.
     """
     selection_model_data = {}
 
@@ -81,7 +112,7 @@ def create_selection_model_data(data_path: str, switching_budgets: list, normali
     ela_features = pd.read_csv(os.path.join(data_path, "ela_features/Non-elitist_B1000_5D/ELA_features.csv"))
     non_elitist_regrets = pd.read_csv(os.path.join(data_path, "achieved_regrets/achieved_regrets_Non-elitist_B1000_5D.csv"))
     for budget in switching_budgets:
-        regret_dfs = []
+        # regret_dfs = []
         if budget == 50: continue
         if budget == 1000: continue
 
@@ -138,6 +169,223 @@ def create_selection_model_data(data_path: str, switching_budgets: list, normali
 
     return selection_model_data
 
+def get_crossvalidated_predictions(selection_model_training_data: dict, safe: bool = False, data_path: str = "./data", 
+                                   no_switch_regrets_path: str = "./data/achieved_regrets/achieved_regrets_Non-elitist_B1000_5D.csv") -> pd.DataFrame:
+    """
+    Performs leave-one-instance-out cross-validation for each switching budget, and returns a DataFrame containing the predictions and actual regrets for each (fid, iid, rep) and switching budget.
+    
+    Parameters
+    ----------
+    selection_model_training_data : dict
+        A dictionary containing the training data for each switching budget.
+    safe : bool, optional
+        Whether to safe the predictions as a csv file, by default False.
+    data_path : str, optional
+        The path to the data directory in which to store the predictions, by default "./data".
+    no_switch_regrets_path : str, optional
+        The path to the no-switch regrets CSV file, by default "./data/achieved_regrets/achieved_regrets_Non-elitist_B1000_5D.csv".
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame containing the predictions and actual regrets for each (fid, iid, rep) and switching budget.
+    """
+    no_switch_regrets = pd.read_csv(no_switch_regrets_path)
+
+    # Only keep rows where iid is in the training set (1,2,3,4,5)
+    no_switch_regrets = no_switch_regrets[no_switch_regrets["iid"].isin([1, 2, 3, 4, 5])]
+
+    switching_budgets = sorted(selection_model_training_data.keys())
+
+    algo_cols = ["Non-elitist", "Elitist", "PSO", "DE", "BFGS", "MLSL"]
+
+    prediction_rows = []
+
+    instances = sorted(
+        selection_model_training_data[switching_budgets[0]]["iid"].unique()
+    )
+
+    for budget in switching_budgets:
+        print(f"Processing budget {budget}...")
+        data_budget = selection_model_training_data[budget].copy()
+
+        feature_cols = [
+            col for col in data_budget.columns
+            if col not in ["fid", "iid", "rep"] + algo_cols
+        ]
+
+        for instance in instances:
+            print(f"Processing instance {instance}...")
+            cv_training_data = data_budget[data_budget["iid"] != instance]
+            cv_test_data = data_budget[data_budget["iid"] == instance]
+
+            train_keys = list(
+                cv_training_data[["fid", "iid", "rep"]]
+                .itertuples(index=False, name=None)
+            )
+
+            test_keys = list(
+                cv_test_data[["fid", "iid", "rep"]]
+                .itertuples(index=False, name=None)
+            )
+
+            X_train = cv_training_data[feature_cols].copy()
+            y_train = cv_training_data[algo_cols].copy()
+            X_test = cv_test_data[feature_cols].copy()
+
+            X_train.index = train_keys
+            y_train.index = train_keys
+            X_test.index = test_keys
+
+            selector = make_default_performance_model()
+            selector.algorithms = algo_cols
+            selector.fit(X_train, y_train)
+
+            predictions = selector.predict(X_test)
+
+
+            for (fid, iid, rep), [(algo, _)] in predictions.items():
+                actual_value = cv_test_data.loc[
+                    (cv_test_data["fid"] == fid)
+                    & (cv_test_data["iid"] == iid)
+                    & (cv_test_data["rep"] == rep),
+                    algo
+                ].values[0]
+
+                prediction_rows.append({
+                    "fid": fid,
+                    "iid": iid,
+                    "rep": rep,
+                    "budget": budget,
+                    "selected_algorithm": algo,
+                    "actual_regret": actual_value,
+                })
+
+    # Add the no-switch regrets for each instance as well
+    for _, row in no_switch_regrets.iterrows():
+        prediction_rows.append({
+            "fid": row["fid"],
+            "iid": row["iid"],
+            "rep": row["rep"],
+            "budget": 1000,  # We can use budget 1000 to indicate no-switch, as 1000 is the maximum budget
+            "selected_algorithm": "Non-elitist",
+            "actual_regret": row["achieved_regret"],
+        })
+
+    res = pd.DataFrame(prediction_rows)
+
+    res = res.sort_values(by=["fid", "iid", "rep", "budget"]).reset_index(drop=True)
+
+    if safe:
+        output_path = os.path.join(data_path, "crossvalidated_predictions.csv")
+
+        if not os.path.exists(data_path):
+            os.makedirs(data_path, exist_ok=True)
+
+        res.to_csv(output_path, index=False)
+        print(f"Cross-validated predictions saved to {output_path}")
+
+    return res
+
+def find_optimal_budgets_per_run(crossvalidated_predictions: pd.DataFrame, tie_breaking_strategy: str = "highest_budget", safe: bool = False, data_path: str = "./data") -> dict:
+    """
+    For each (fid, iid, rep), we find the budget where actual_regret is the lowest across all budgets for that (fid,iid,rep).
+    If there are ties, we select the budget according to the specified tie-breaking strategy.
+
+    Parameters
+    ----------
+    crossvalidated_predictions: pd.DataFrame
+        A DataFrame containing the predictions and actual regrets for each (fid, iid, rep) and switching budget, as returned by get_crossvalidated_predictions.
+    tie_breaking_strategy: str, optional
+        The strategy to use for breaking ties when multiple budgets have the same lowest actual_regret. 
+        Must be one of "highest_budget" or "lowest_budget". Default is "highest_budget".
+    safe: bool, optional
+        Whether to save the optimal budgets per run as a csv file, by default False.
+    data_path: str, optional
+        The path to the data directory in which to store the optimal budgets per run, by default "./data".
+    """
+
+    optimal_budgets = {}
+
+    for (fid, iid, rep), group in crossvalidated_predictions.groupby(["fid", "iid", "rep"]):
+        min_regret = group["actual_regret"].min()
+        best_budgets = group[group["actual_regret"] == min_regret]["budget"].tolist()
+
+        if tie_breaking_strategy == "highest_budget":
+            selected_budget = max(best_budgets)
+        elif tie_breaking_strategy == "lowest_budget":
+            selected_budget = min(best_budgets)
+        else:
+            raise ValueError(f"Invalid tie-breaking strategy: {tie_breaking_strategy}")
+
+        optimal_budgets[(fid, iid, rep)] = selected_budget
+
+    if safe:
+        output_path = os.path.join(data_path, "optimal_budgets.csv")
+        pd.DataFrame([
+            {"fid": fid, "iid": iid, "rep": rep, "optimal_budget": budget}
+            for (fid, iid, rep), budget in optimal_budgets.items()
+        ]).to_csv(output_path, index=False)
+        print(f"Optimal budgets saved to {output_path}")
+
+    return optimal_budgets
+
+
+def create_switch_model_data(selection_model_training_data: dict[int, pd.DataFrame], safe: bool = True, data_path: str = "./data", 
+                             safe_crossvalidated_predictions: bool = False, safe_optimal_budgets: bool = False) -> pd.DataFrame:
+    """
+    Creates switching-model training data using leave-one-instance-out CV.
+ 
+    Parameters
+    ----------
+    selection_model_training_data: dict[int, pd.DataFrame]
+        A dictionary where the keys are the switching budgets and the values are the corresponding selection model training data as pandas DataFrames.
+    safe: bool, optional
+        Whether to save the created switching model training data as csv files. Default is True.
+    data_path: str, optional
+        Path to the folder where the created switching model training data should be stored if safe is True. Default is "./data".
+    safe_crossvalidated_predictions: bool, optional
+        Whether to save the cross-validated predictions as csv files. Default is False.
+    safe_optimal_budgets: bool, optional
+        Whether to save the optimal budgets per run as csv files. Default is False.
+    
+    Returns
+    -------
+    switching_model_training_data: dict[int, pd.DataFrame]
+        A dictionary where the keys are the switching budgets and the values are the corresponding switching model training
+    """
+    switching_model_training_data = {}
+
+    switching_budgets = sorted(selection_model_training_data.keys())
+    
+    crossvalidated_predictions = get_crossvalidated_predictions(selection_model_training_data, safe=safe_crossvalidated_predictions, data_path=data_path)
+
+    optimal_budgets_per_run = find_optimal_budgets_per_run(crossvalidated_predictions, safe=safe_optimal_budgets, data_path=data_path)
+
+    for switching_budget in switching_budgets:
+        switching_model_training_data[switching_budget] = selection_model_training_data[switching_budget].copy()
+
+        # Remove algo columns
+        
+        algo_cols = ["Non-elitist", "Elitist", "PSO", "DE", "BFGS", "MLSL"]
+        switching_model_training_data[switching_budget] = switching_model_training_data[switching_budget].drop(columns=algo_cols)
+
+        # Add optimal budget column. Entry is true iff the optimal budget for that (fid, iid, rep) less or equal the current switching_budget
+        switching_model_training_data[switching_budget]["optimal_budget"] = switching_model_training_data[switching_budget].apply(
+            lambda row: optimal_budgets_per_run[(row["fid"], row["iid"], row["rep"])] <= switching_budget,
+            axis=1
+        )
+
+    if safe:   
+        output_path = os.path.join(data_path, "switching_model_training_data")
+        os.makedirs(output_path, exist_ok=True)
+
+        for budget, df in switching_model_training_data.items():
+            budget_output_path = os.path.join(output_path, f"switching_model_training_data_budget_{budget}.csv")
+            df.to_csv(budget_output_path, index=False)
+            print(f"Switching model training data for budget {budget} saved to {budget_output_path}")
+
+    return switching_model_training_data
 
 class DynamicSelector:
     def __init__(self, switching_budgets: list = [50*i for i in range(1, 21)], data_path: str = None, model_path: str = None):
@@ -179,4 +427,12 @@ class DynamicSelector:
         pass
 
 if __name__ == "__main__":    # Example usage
-    selection_model_data = create_selection_model_data(data_path="./data", switching_budgets=[50*i for i in range(1, 21)], normalise=True, store_data=True, output_path="./data/selection_model_data")
+    selection_model_data = create_selection_model_data(data_path="./data", switching_budgets=[50*i for i in range(2, 21)], normalise=True, store_data=False, output_path="./data/selection_model_data")
+
+    selection_model_training_data = {}
+    for budget in selection_model_data:
+        selection_model_training_data[budget] = selection_model_data[budget].copy()
+        # Remove all rows where iid is not in the training set (1,2,3,4,5)
+        selection_model_training_data[budget] = selection_model_training_data[budget][selection_model_training_data[budget]["iid"].isin([1, 2, 3, 4, 5])]
+
+    switching_model_data = create_switch_model_data(selection_model_training_data, safe_crossvalidated_predictions=True, safe_optimal_budgets=True, data_path="./data")
