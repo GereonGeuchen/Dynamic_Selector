@@ -1350,6 +1350,9 @@ def calculate_ela_level(
 
             #data['class'] = [int(x) + 1 for x in data['class']]
 
+            kf = StratifiedKFold(n_splits=ela_level_resample_iterations)
+
+
             kf = StratifiedKFold(n_splits = ela_level_resample_iterations)
             
             lda_mmce_prob = []
@@ -1358,6 +1361,27 @@ def calculate_ela_level(
                   mda_mmce_prob = []
             for train_index, test_index in kf.split(X, y_class):
                   lda = LinearDiscriminantAnalysis()
+
+                  X_train = X.iloc[train_index]
+                  X_test = X.iloc[test_index]
+                  y_train = y_class.iloc[train_index]
+                  y_test = y_class.iloc[test_index]
+
+            
+
+                  # === Added by me to avoid error when one class has only one unique value in the training set ===
+                  if X_train.nunique().max() <= 1:
+                        lda_mmce_prob.append(0.5)
+
+                        qda = QuadraticDiscriminantAnalysis()
+                        qda.fit(X_train, y_train)
+                        qda_mmce_prob.append(
+                              (y_test.values != qda.predict(X_test)).mean()
+                        )
+                        continue
+
+                  # === End of added code ===========================================
+                  
                   lda.fit(X.iloc[train_index], y_class[train_index])
                   lda_mmce_prob.append((y_class[test_index].values != lda.predict(X.iloc[test_index])).mean())
 
