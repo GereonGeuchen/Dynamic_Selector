@@ -17,6 +17,8 @@ from ioh import ProblemClass
 from modcma import ModularCMAES, Parameters
 import numpy as np
 
+from sklearn.metrics import auc 
+
 from pathlib import Path
 
 # Import the algorithms to be used in A2
@@ -44,15 +46,26 @@ class IOHProblemWrapper:
     def __init__(self, *args, **kwargs):
         self.problem = ioh.get_problem(*args, **kwargs)
         self.function_evals = {}
+        self.best_so_far_evals = {}
+        self.best_eval_so_far = np.inf
 
     def __call__(self, x):
         y = self.problem(x)
+
+        # Update best eval so far
+        if y < self.best_eval_so_far:
+            self.best_eval_so_far = y
+
         self.function_evals[self.problem.state.evaluations] = (x, y)
+        # Update the best evaluation so far
+        self.best_so_far_evals[self.problem.state.evaluations] = (x, self.best_eval_so_far)
         return y
 
     def reset(self):
         self.problem.reset()
         self.function_evals = {}
+        self.best_so_far_evals = {}
+        self.best_eval_so_far = np.inf
 
     def __getattr__(self, name):
         return getattr(self.problem, name)
@@ -255,10 +268,8 @@ def get_ela_level_quantiles(budget):
     """
     if budget <= 16:
         return None
-    if budget <= 32:
-        return [0.50]
     if budget <= 88:
-        return [0.25, 0.50]
+        return [0.50]
     return "default"
 
 def get_hlc_from_fid(fid):
@@ -287,6 +298,37 @@ def get_hlc_from_fid(fid):
         return 5
 
 def calculate_ela_features(evaluations, fid, iid, rep, a1_budget, dim, algname):
+    """
+    This function calculates the ELA features from the given evaluations and returns them in a dictionary.
+
+    Parameters
+    ----------
+    evaluations : dict
+        A dictionary containing the evaluations, where the keys are the evaluation numbers and the values are tuples
+        of the form (x, y), where x is the input and y is the objective value.
+    fid : int
+        The function ID (fid) of the BBOB instance from which the evaluations were obtained.
+    iid : int
+        The instance ID (iid) of the BBOB instance from which the evaluations were obtained.
+    rep : int
+        The repetition number of the run from which the evaluations were obtained.
+    a1_budget : int
+        The candidate switching budget to A2 (the budget at which the switch from A1 to A2 happens).
+    dim : int
+        The dimension of the BBOB instances to be used.
+    algname : str
+        The name of the algorithm which was switched to (or "Non-elitist", if no switch was made)
+
+    Final csv will contain the following columns:
+    - fid: function ID of the BBOB instance
+    - iid: instance ID of the BBOB instance
+    - rep: repetition number of the run
+    - high_level_category: high level category of the BBOB function
+    - a1_budget: the candidate switching budget to A2 (the budget at which the switch from A1 to A2 happens)
+    - ela_budget: the number of evaluations (budget) from which the ELA features were calculated
+    - a2_algorithm: the name of the algorithm which was switched to (or "Non-elitist" in case no switch occured)
+    - Remaining columns: the calculated ELA features
+    """
     # Prepare the data for ELA calculation
     x_cols = [f'x{i}' for i in range(dim)]
     X = np.array([eval[0] for eval in evaluations.values()])
@@ -304,6 +346,7 @@ def calculate_ela_features(evaluations, fid, iid, rep, a1_budget, dim, algname):
     features["high_level_category"] = get_hlc_from_fid(fid)
 
     features["a1_budget"] = a1_budget
+    features["ela_budget"] = budget
     features["a2_algorithm"] = algname
 
     with warnings.catch_warnings():
@@ -312,7 +355,7 @@ def calculate_ela_features(evaluations, fid, iid, rep, a1_budget, dim, algname):
 
         features.update(calculate_ela_distribution(X, y))
         features.update(calculate_ela_meta(X, y))
-
+        
         # Need to handle different budgets, as not all quantiles are available for smaller budgets
         quantiles = get_ela_level_quantiles(budget)
 
@@ -347,7 +390,7 @@ def calculate_ela_features(evaluations, fid, iid, rep, a1_budget, dim, algname):
     return features
 
 
-def collect_data(a1_budget, dim):
+def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]):
     """
     This function runs the optimisation algorithms on the BBOB instances and logs
     their evaluations. It additionally computes ELA features every 50 evaluations
@@ -362,31 +405,45 @@ def collect_data(a1_budget, dim):
 
     dim : int
         The dimension of the BBOB instances to be used
+
+    algs_to_run : list of str, optional
+        The list of algorithms to run. Possible values are "DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist". 
+        If not provided, all algorithms are run. For lower budgets, for which many ELA features are computed, it might be benificial
+        to distribute the computation between algorithms across different jobs.
     """
     achieved_regrets = {}
+    achieved_aucs = {}
 
     trigger = ioh.logger.trigger.Always()
 
-    #for A2, algname in zip([DE, MLSL, PSO, BFGS, None, None], ["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]):
-    for A2, algname in zip([None], ["Non-elitist"]):
+    for A2, algname in zip([DE, MLSL, PSO, BFGS, None, None], ["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]):
+        if algname not in algs_to_run:
+            continue
+
+        # We only need to record Non-elitist iff A1_budget is 1000 to avoid redundancy
+        if algname == "Non-elitist" and a1_budget != 1000:
+            continue
+        if algname != "Non-elitist" and a1_budget == 1000:
+            continue
+
         logger = ioh.logger.Analyzer(
             triggers=[trigger],
-            folder_name=f'./data/raw_evluations/{algname}_B{a1_budget}_{dim}D',
+            folder_name=f'./data/raw_evaluations/{algname}_B{a1_budget}_{dim}D',
             algorithm_name=algname,
             store_positions=True,
         )
         tracked_parameters = TrackedParameters()
         logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])
-        for fid in range(1, 3):
+        for fid in range(1, 25):
             ela_features = []
-            for iid in range(1, 2):
+            for iid in range(1, 8):
 
                 problem = IOHProblemWrapper(fid, iid, dim, ProblemClass.BBOB)
         
                 # Attach the logger to the problem
                 problem.attach_logger(logger)
 
-                for rep in range(5):
+                for rep in range(20):
                     tracked_parameters.rep = rep
                     tracked_parameters.iid = iid
                     print(f"Running function {fid} instance {iid} repetition {rep} with A2 {algname}, budget {a1_budget}")
@@ -400,20 +457,34 @@ def collect_data(a1_budget, dim):
                         alg(problem, A2)
             
                     # Calculate ELA features every 50 evaluations and save to csv
-                    for i in range(50, 1000, 50):
+                    for i in range(50, 1001, 50):
                         # If the algorithm is not Non-elitist, we only calculate features if budget > A1_budget to avoid redundancy
                         if algname != "Non-elitist" and i <= a1_budget:
                             continue
 
                         current_evaluations = {j: v for j, v in problem.function_evals.items() if j <= i}
-                        ela_features.append(calculate_ela_features(current_evaluations, fid, iid, rep, i, dim, algname))
+                        ela_features.append(calculate_ela_features(current_evaluations, fid, iid, rep, a1_budget, dim, algname))
 
                     # The achieved regret of this specific run is the lowest objective value 
                     # that is within 1000 evals and within bounds
-                    evals_to_consider = {i: v for i, v in problem.function_evals.items() if i <= 1000 and np.all(np.abs(v[0]) <= 5)}
-                    if evals_to_consider:
-                        best_eval = min(evals_to_consider.values(), key=lambda x: x[1])
+                    evals_to_consider_for_regret = {i: v for i, v in problem.function_evals.items() if i <= 1000 and np.all(np.abs(v[0]) <= 5)}
+                    if evals_to_consider_for_regret:
+                        best_eval = min(evals_to_consider_for_regret.values(), key=lambda x: x[1])
                         achieved_regrets[(fid, iid, rep, a1_budget, algname)] = best_eval[1] - problem.optimum.y
+
+                    # The auc of the convergence curve
+                    evals_to_consider_for_auc = {i: v for i, v in problem.best_so_far_evals.items() if i <= 1000}
+                    if evals_to_consider_for_auc:
+                        items = sorted(evals_to_consider_for_auc.items())
+
+                        x = [k for k, _ in items]
+                        y = [v[1] - problem.optimum.y for _, v in items]
+
+                        # # Print curve
+                        # for i in range(len(x)):
+                        #     print(f"Eval: {x[i]}, Best so far: {y[i]}")
+
+                        achieved_aucs[(fid, iid, rep, a1_budget, algname)] = auc(x, y)
 
                     problem.reset()
                 
@@ -426,9 +497,33 @@ def collect_data(a1_budget, dim):
     # Save the achieved regrets to a csv file for later use in model training/tuning
     regrets_df = pd.DataFrame([{"fid": fid, "iid": iid, "rep": rep, "a1_budget": a1_budget, "algname": algname, "achieved_regret": regret} 
                                 for (fid, iid, rep, a1_budget, algname), regret in achieved_regrets.items()])
-    safe_df_to_csv(f'./data', f'achieved_regrets_B{a1_budget}_{dim}D.csv', regrets_df)
+
+    # Save the achieved AUCs to a csv file for later use in model training/tuning
+    aucs_df = pd.DataFrame([{"fid": fid, "iid": iid, "rep": rep, "a1_budget": a1_budget, "algname": algname, "achieved_auc": auc} 
+                            for (fid, iid, rep, a1_budget, algname), auc in achieved_aucs.items()])
+
+    if len(algs_to_run) < 6:
+        # store alg names in df name
+        algs_str = "_".join(algs_to_run)
+        safe_df_to_csv(f'./data/achieved_regrets/', f'achieved_regrets_{algs_str}_B{a1_budget}_{dim}D.csv', regrets_df)
+        safe_df_to_csv(f'./data/achieved_aucs/', f'achieved_aucs_{algs_str}_B{a1_budget}_{dim}D.csv', aucs_df)
+    else:
+        safe_df_to_csv(f'./data/achieved_regrets/', f'achieved_regrets_B{a1_budget}_{dim}D.csv', regrets_df)
+        safe_df_to_csv(f'./data/achieved_aucs/', f'achieved_aucs_B{a1_budget}_{dim}D.csv', aucs_df)
 
 if __name__ == "__main__":
-    # Example usage: collect evaluations and ELA features for a1_budget=200 and dimension=5
-    # Arguments could also be parsed from command line 
-    collect_data(a1_budget=500, dim=5)
+    # Read budget from command line argument, default to 500 if not provided
+    if len(sys.argv) > 1:
+        a1_budget = int(sys.argv[1])
+    else:        
+        a1_budget = 500
+
+    if len(sys.argv) > 2:
+        algorithms_to_run = sys.argv[2].split(",")
+    else:
+        algorithms_to_run = ["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]
+
+    # a1_budget = 500
+    # algorithms_to_run = ["BFGS"]
+
+    collect_data(a1_budget=a1_budget, dim=5, algs_to_run=algorithms_to_run)
