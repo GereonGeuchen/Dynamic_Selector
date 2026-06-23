@@ -455,6 +455,8 @@ class DynamicSelector:
                 "ela_scaler": ela_scaler,
             }
 
+            print(f"Models for budget {budget} loaded successfully")
+
         return models
 
     def train_models(self, training_data_is_stored: bool = False, store_trained_models: bool = True):
@@ -507,7 +509,7 @@ class DynamicSelector:
 
                 joblib.dump(self.models[budget]["ela_scaler"], os.path.join(model_budget_path, f"ela_scaler.joblib"))
 
-    def simulate_single_run(self, fid: int, iid: int, rep: int, ela_features_instance: pd.DataFrame, regrets: pd.DataFrame, regrets_no_switch: pd.DataFrame) -> dict:
+    def simulate_single_run(self, fid: int, iid: int, rep: int, ela_features_instance: pd.DataFrame, regrets: pd.DataFrame) -> dict:
         """
         Simulates a single run of the dynamic selector on a given instance, and returns the results.
 
@@ -523,8 +525,6 @@ class DynamicSelector:
             A DataFrame containing the ELA features for this instance.
         regrets: pd.DataFrame
             A DataFrame containing the achieved regrets for all algorithms on this instance for different budgets.
-        regrets_no_switch: pd.DataFrame
-            A DataFrame containing the achieved regret for the no-switch case on this instance.
 
         Returns
         -------
@@ -542,8 +542,12 @@ class DynamicSelector:
 
             # Get scaler
             ela_scaler = self.models[budget]["ela_scaler"]
-            ela_features = ela_scaler.transform(ela_row)
-            ela_features.index = [(fid, iid, rep)]
+            ela_features = pd.DataFrame(
+                ela_scaler.transform(ela_row),
+                columns=ela_row.columns,
+                index=[(fid, iid, rep)]
+            )
+            # print(f"Scaled ELA features for budget {budget}:\n{ela_features}")
 
             # Get switching model
             switching_model = self.models[budget]["switching_model"]
@@ -553,12 +557,12 @@ class DynamicSelector:
                 selection_model = self.models[budget]["selection_model"]
                 algo_predicion = selection_model.predict(ela_features)
                 predicted_algo = list(algo_predicion.values())[0][0][0]
-
+                print(f"Switch decision: {switch_decision}, predicted algorithm: {predicted_algo}")
                 achieved_regret = regrets[
                     (regrets["fid"] == fid) &
                     (regrets["iid"] == iid) &
                     (regrets["rep"] == rep) &
-                    (regrets["a1_budget"] == budget) &
+                    (regrets["a1_budget"] == budget if predicted_algo != "Non-elitist" else regrets["a1_budget"] == 1000) &
                     (regrets["algname"] == predicted_algo)
                 ]["achieved_regret"].values[0]
 
@@ -569,27 +573,22 @@ class DynamicSelector:
 
         if not switch_decision:
             predicted_algo = "Non-elitist"
-            achieved_regret = regrets_no_switch[
-                (regrets_no_switch["fid"] == fid) &
-                (regrets_no_switch["iid"] == iid) &
-                (regrets_no_switch["rep"] == rep)
+            achieved_regret = regrets[
+                (regrets["fid"] == fid) &
+                (regrets["iid"] == iid) &
+                (regrets["rep"] == rep) &
+                (regrets["a1_budget"] == 1000) &
+                (regrets["algname"] == "Non-elitist")
             ]["achieved_regret"].values[0]
 
             switch_budget = 1000
             selected_algorithm = predicted_algo
         
-        vbs_precision = min(
-            regrets[
-                (regrets["fid"] == fid) &
-                (regrets["iid"] == iid) &
-                (regrets["rep"] == rep)
-            ]["achieved_regret"].min(),
-            regrets_no_switch[
-                (regrets_no_switch["fid"] == fid) &
-                (regrets_no_switch["iid"] == iid) &
-                (regrets_no_switch["rep"] == rep)
-            ]["achieved_regret"].values[0]
-        )
+        vbs_precision = regrets[
+            (regrets["fid"] == fid) &
+            (regrets["iid"] == iid) &
+            (regrets["rep"] == rep)
+            ]["achieved_regret"].min()
 
         return{
             "fid": fid,
@@ -603,8 +602,14 @@ class DynamicSelector:
         
 
     def evaluate(self) -> np.ndarray:
-        # 1. Load data
-        # 1.1 For the regrets, concatenate all csvs inside achieved_regrets
+
+        # 1. Check that models are loaded
+        for budget in self.switching_budgets:
+            if budget == 1000: continue
+            if self.models[budget]["selection_model"] is None or self.models[budget]["switching_model"] is None or self.models[budget]["ela_scaler"] is None:
+                raise ValueError(f"Models for budget {budget} are not loaded. Models must be trained and loaded before evaluation.")
+
+        # 2. Load data
         regrets = pd.concat(
             [
                 pd.read_csv(os.path.join(self.data_path, f"achieved_regrets/achieved_regrets_{algo}_B{budget}_5D.csv"))
@@ -614,6 +619,11 @@ class DynamicSelector:
             ignore_index=True,
         )
         regrets_no_switch = pd.read_csv(os.path.join(self.data_path, "achieved_regrets/achieved_regrets_Non-elitist_B1000_5D.csv"))
+
+        regrets = pd.concat(
+            [regrets, regrets_no_switch],
+            ignore_index=True,
+        )
 
         ela_features = pd.read_csv(os.path.join(self.data_path, "ela_features/Non-elitist_B1000_5D/ELA_features.csv"))
         # Only keep rows where iid is in the test set (6,7)
@@ -629,7 +639,7 @@ class DynamicSelector:
                         (ela_features["rep"] == rep)
                     ].drop(columns=["a1_budget", "a2_algorithm", "fid", "iid", "rep", "high_level_category"])
 
-                    result = self.simulate_single_run(fid, iid, rep, ela_features_instance, regrets, regrets_no_switch)
+                    result = self.simulate_single_run(fid, iid, rep, ela_features_instance, regrets)
 
                     # Collect predictions of static selection models
                     for budget in self.switching_budgets:
@@ -649,16 +659,18 @@ class DynamicSelector:
                             (regrets["fid"] == fid) &
                             (regrets["iid"] == iid) &
                             (regrets["rep"] == rep) &
-                            (regrets["a1_budget"] == budget) &
+                            (regrets["a1_budget"] == budget if predicted_algo != "Non-elitist" else regrets["a1_budget"] == 1000) &
                             (regrets["algname"] == predicted_algo)
                         ]["achieved_regret"].values[0]
 
                         result[f"static_B{budget}"] = algo_regret
                     
-                    result["no_switch"] = regrets_no_switch[
-                        (regrets_no_switch["fid"] == fid) &
-                        (regrets_no_switch["iid"] == iid) &
-                        (regrets_no_switch["rep"] == rep)
+                    result["no_switch"] = regrets[
+                        (regrets["fid"] == fid) &
+                        (regrets["iid"] == iid) &
+                        (regrets["rep"] == rep) &
+                        (regrets["a1_budget"] == 1000) &
+                        (regrets["algname"] == "Non-elitist")
                     ]["achieved_regret"].values[0]
 
                     result_df = pd.DataFrame([result])
@@ -668,8 +680,8 @@ class DynamicSelector:
 
 if __name__ == "__main__":    
     # # Example usage
-    selector = DynamicSelector(data_path="./data", results_path="./results", load_models=False)
-    selector.train_models(training_data_is_stored=False, store_trained_models=True)
+    selector = DynamicSelector(data_path="./data", results_path="./results", load_models=True)
+    # selector.train_models(training_data_is_stored=False, store_trained_models=True)
     results = selector.evaluate()
     # for budget in [50*i for i in range(1, 20)]:
     #     scaler = joblib.load(f"./models/budget_{budget}/ela_scaler.joblib")
