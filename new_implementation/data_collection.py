@@ -174,7 +174,7 @@ class From_CMA_To_CMA():
             return
         
         if A2 == "Elitist":
-            cma.parameters.elitist = False
+            cma.parameters.elitist = True
             cma.parameters.budget = self.total_budget
         cma.run()
         
