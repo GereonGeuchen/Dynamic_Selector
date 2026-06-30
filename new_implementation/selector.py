@@ -10,7 +10,7 @@ import numpy as np
 import warnings
 import sys
 
-from asf.predictors import RandomForestClassifierWrapper
+from asf.predictors import RandomForestClassifierWrapper, RandomForestRegressorWrapper
 from asf.selectors import PerformanceModel
 from ConfigSpace import ConfigurationSpace
 
@@ -43,18 +43,27 @@ def make_default_performance_model():
         random_state=42,
     )
 
-def make_default_switching_model():
+def make_default_wrapper_model(wrapper_type: str = "RandomForestClassifierWrapper"):
     """
-    Creates a default switching model using the default configuration of the RandomForestClassifierWrapper class.
+    Creates a default wrapper model using the default configuration of the specified wrapper type.
 
+    Parameters
+    ----------
+    wrapper_type: str, optional
+        The type of wrapper model to create. Must be either "RandomForestClassifierWrapper" or "RandomForestRegressorWrapper".
+    
     Returns
     -------
-    switching_model: RandomForestClassifierWrapper
-        The created RandomForestClassifierWrapper.
+    wrapper_model: RandomForestClassifierWrapper or RandomForestRegressorWrapper
     """
-    default_classifier_config = RandomForestClassifierWrapper.get_configuration_space().get_default_configuration()
-    default_classifier = RandomForestClassifierWrapper.get_from_configuration(default_classifier_config, random_state=42)()
-    return default_classifier
+    if wrapper_type == "RandomForestClassifierWrapper":
+        default_classifier_config = RandomForestClassifierWrapper.get_configuration_space().get_default_configuration()
+        default_classifier = RandomForestClassifierWrapper.get_from_configuration(default_classifier_config, random_state=42)()
+        return default_classifier
+    else:
+        default_regressor_config = RandomForestRegressorWrapper.get_configuration_space().get_default_configuration()
+        default_regressor = RandomForestRegressorWrapper.get_from_configuration(default_regressor_config, random_state=42)()
+        return default_regressor
 
 def normalise_selection_model_data(selection_model_data) -> tuple[pd.DataFrame, MinMaxScaler]:
     """
@@ -172,6 +181,9 @@ def create_selection_model_data(data_path: str, switching_budgets: list, a2_algo
 
         # Drop all rows in which iid is not in the training set (1,2,3,4,5)
         selection_model_data_budget = selection_model_data_budget[selection_model_data_budget["iid"].isin([1, 2, 3, 4, 5])]
+
+        # Drop all columns that are nan
+        selection_model_data_budget = selection_model_data_budget.dropna(axis=1, how="all")
 
         selection_model_data[budget] = selection_model_data_budget
 
@@ -347,8 +359,75 @@ def find_optimal_budgets_per_run(crossvalidated_predictions: pd.DataFrame, tie_b
 
     return optimal_budgets
 
+def get_crossvalidated_lookahead_predictions(lookahead_model_training_data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Performs leave-one-instance-out cross-validation for the lookahead model, and returns a DataFrame containing the predictions for each (fid, iid, rep) and switching budget.
 
-def create_switch_model_data(selection_model_training_data: dict[int, pd.DataFrame], store_final_data: bool = True, data_output_path: str = "./data", 
+    Parameters
+    ----------
+    lookahead_model_training_data : pd.DataFrame
+        A DataFrame containing the training data for the lookahead model.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame containing the predictions for each (fid, iid, rep) and switching budget.
+    """
+    feature_cols = [col for col in lookahead_model_training_data.columns if col not in ["fid", "iid", "rep", "high_level_category"] and not col.startswith("t_")]
+    
+    prediction_rows = []
+
+    instances = sorted(lookahead_model_training_data["iid"].unique())
+
+    for instance in instances:
+        print(f"Processing instance {instance}...")
+        cv_training_data = lookahead_model_training_data[lookahead_model_training_data["iid"] != instance]
+        cv_test_data = lookahead_model_training_data[lookahead_model_training_data["iid"] == instance]
+
+        train_keys = list(cv_training_data[["fid", "iid", "rep"]].itertuples(index=False, name=None))
+        test_keys = list(cv_test_data[["fid", "iid", "rep"]].itertuples(index=False, name=None))
+
+        X_train = cv_training_data[feature_cols].copy()
+        y_train = cv_training_data[[col for col in cv_training_data.columns if col.startswith("t_")]].copy()
+        X_test = cv_test_data[feature_cols].copy()
+
+        X_train.index = train_keys
+        y_train.index = train_keys
+        X_test.index = test_keys
+        
+        for t_col in y_train.columns:
+            selector = make_default_wrapper_model(wrapper_type="RandomForestRegressorWrapper")
+            selector.fit(X_train, y_train[t_col])
+
+            predictions = selector.predict(X_test)
+
+            for (fid, iid, rep), pred in zip(X_test.index, predictions):
+                prediction_rows.append({
+                    "fid": fid,
+                    "iid": iid,
+                    "rep": rep,
+                    "t_col": t_col,
+                    "predicted_regret": pred,
+                })
+
+    # Pivot the predictions to have one column per t_col
+    res = (
+    pd.DataFrame(prediction_rows)
+    .pivot(
+        index=["fid", "iid", "rep"],
+        columns="t_col",
+        values="predicted_regret",
+    )
+    .reset_index()
+)
+
+    res.columns.name = None
+
+    res = res.sort_values(by=["fid", "iid", "rep"]).reset_index(drop=True)
+
+    return res
+
+def create_switch_model_data(selection_model_training_data: dict[int, pd.DataFrame], lookahead_model_training_data: dict[int, pd.DataFrame], tie_breaking_strategy: str = "highest_budget", store_final_data: bool = True, data_output_path: str = "./data", 
                              store_crossvalidated_predictions: bool = False, store_optimal_budgets: bool = False) -> pd.DataFrame:
     """
     Creates switching-model training data using leave-one-instance-out CV.
@@ -357,6 +436,11 @@ def create_switch_model_data(selection_model_training_data: dict[int, pd.DataFra
     ----------
     selection_model_training_data: dict[int, pd.DataFrame]
         A dictionary where the keys are the switching budgets and the values are the corresponding selection model training data as pandas DataFrames.
+    lookahead_model_training_data: dict[int, pd.DataFrame]
+        A dictionary where the keys are the switching budgets and the values are the corresponding lookahead model training data as pandas DataFrames.
+    tie_breaking_strategy: str, optional
+        The strategy to use for breaking ties when multiple budgets have the same lowest actual_regret. 
+        Must be one of "highest_budget" or "lowest_budget". Default is "highest_budget".
     store_final_data: bool, optional
         Whether to save the created switching model training data as csv files. Default is True.
     data_output_path: str, optional
@@ -375,17 +459,30 @@ def create_switch_model_data(selection_model_training_data: dict[int, pd.DataFra
 
     switching_budgets = sorted(selection_model_training_data.keys())
     
-    crossvalidated_predictions = get_crossvalidated_predictions(selection_model_training_data, store=store_crossvalidated_predictions, data_output_path=data_output_path)
+    # crossvalidated_predictions = get_crossvalidated_predictions(selection_model_training_data, store=store_crossvalidated_predictions, data_output_path=data_output_path)
 
-    optimal_budgets_per_run = find_optimal_budgets_per_run(crossvalidated_predictions, store=store_optimal_budgets, data_output_path=data_output_path)
+    # optimal_budgets_per_run = find_optimal_budgets_per_run(crossvalidated_predictions, tie_breaking_strategy=tie_breaking_strategy, store=store_optimal_budgets, data_output_path=data_output_path)
+
+    crossvalidated_predictions = pd.read_csv("./data/crossvalidated_predictions.csv")
+    optimal_budgets_per_run_df = pd.read_csv("./data/optimal_budgets.csv")
+
+    optimal_budgets_per_run = {(row["fid"], row["iid"], row["rep"]): row["optimal_budget"] for _, row in optimal_budgets_per_run_df.iterrows()}
 
     for switching_budget in switching_budgets:
         switching_model_training_data[switching_budget] = selection_model_training_data[switching_budget].copy()
 
         # Remove algo columns
-        
         algo_cols = ["Non-elitist", "Elitist", "PSO", "DE", "BFGS", "MLSL"]
         switching_model_training_data[switching_budget] = switching_model_training_data[switching_budget].drop(columns=algo_cols)
+
+        lookahead_predictions = get_crossvalidated_lookahead_predictions(lookahead_model_training_data[switching_budget])
+
+        
+        switching_model_training_data[switching_budget] = switching_model_training_data[switching_budget].merge(
+            lookahead_predictions,
+            on=["fid", "iid", "rep"],
+            how="left"
+        )
 
         # Add optimal budget column. Entry is true iff the optimal budget for that (fid, iid, rep) less or equal the current switching_budget
         switching_model_training_data[switching_budget]["optimal_budget"] = switching_model_training_data[switching_budget].apply(
@@ -394,7 +491,7 @@ def create_switch_model_data(selection_model_training_data: dict[int, pd.DataFra
         )
 
     if store_final_data:   
-        output_path = os.path.join(data_output_path, "switching_model_training_data")
+        output_path = os.path.join(data_output_path, "switching_model_training_data_lookahead_test")
         os.makedirs(output_path, exist_ok=True)
 
         for budget, df in switching_model_training_data.items():
@@ -403,6 +500,118 @@ def create_switch_model_data(selection_model_training_data: dict[int, pd.DataFra
             print(f"Switching model training data for budget {budget} saved to {budget_output_path}")
 
     return switching_model_training_data
+
+def create_lookahead_model_data(selection_model_training_data: dict[int, pd.DataFrame], normalize_lookahead_performances: bool = True, store_final_data: bool = True, data_output_path: str = "./data") -> dict[int, pd.DataFrame]:
+    """
+    Creates lookahead-model training data using leave-one-instance-out CV.
+ 
+    Parameters
+    ----------
+    selection_model_training_data: dict[int, pd.DataFrame]
+        A dictionary where the keys are the switching budgets and the values are the corresponding selection model training data as pandas DataFrames.
+    normalize_lookahead_performances: bool, optional
+        Whether to normalize the lookahead performances. Default is True.
+    store_final_data: bool, optional
+        Whether to save the created lookahead model training data as csv files. Default is True.
+    data_output_path: str, optional
+        Path to the folder where the created lookahead model training data should be stored if store_final_data is True. Default is "./data".
+    
+    Returns
+    -------
+    lookahead_model_training_data: dict[int, pd.DataFrame]
+        A dictionary where the keys are the switching budgets and the values are the corresponding lookahead model training data as pandas DataFrames.
+    """
+    lookahead_model_training_data = {}
+
+    switching_budgets = sorted(selection_model_training_data.keys())
+
+    switching_budgets = [50*i for i in range(1, 21)]
+
+    regrets_across_budget_and_algos = pd.concat(
+        [
+            pd.read_csv(os.path.join(data_output_path, f"achieved_regrets/achieved_regrets_{algo}_B{budget}_5D.csv"))
+            for algo in ["Elitist", "PSO", "DE", "BFGS", "MLSL"]
+            for budget in switching_budgets if budget != 1000
+        ],
+        ignore_index=True,
+    )
+
+    regrets_no_switch = pd.read_csv(os.path.join(data_output_path, "achieved_regrets/achieved_regrets_Non-elitist_B1000_5D.csv"))
+
+    regrets_across_budget_and_algos = pd.concat(
+        [regrets_across_budget_and_algos, regrets_no_switch],
+        ignore_index=True,
+    )
+
+    # For each (fid,iid,rep,budget), find the lowest achieved regret
+    regrets_across_budget_and_algos = regrets_across_budget_and_algos.groupby(["fid", "iid", "rep", "a1_budget"], as_index=False)["achieved_regret"].min()
+
+    # For eacha (fid,iid,rep), if the budget with the lowest achieved regret is 1000, we copy the value to all other budgets
+    regrets_across_budget_and_algos = (
+        regrets_across_budget_and_algos
+        .groupby(["fid", "iid", "rep"], group_keys=False)
+        .apply(
+            lambda group: (
+                group.assign(achieved_regret=group["achieved_regret"].min())
+                if group.loc[group["achieved_regret"].idxmin(), "a1_budget"] == 1000
+                else group
+            )
+        )
+        .reset_index(drop=True)
+    )
+
+    # Only keep rows where iid is in the training set (1,2,3,4,5)
+    regrets_across_budget_and_algos = regrets_across_budget_and_algos[regrets_across_budget_and_algos["iid"].isin([1, 2, 3, 4, 5])]
+
+    # Now create the data for the lookahead models
+    for budget in switching_budgets:
+        if budget == 1000: continue
+        selection_model_data_budget = selection_model_training_data[budget].copy()
+        # Remove algo columns
+        algo_cols = ["Non-elitist", "Elitist", "PSO", "DE", "BFGS", "MLSL"]
+        selection_model_data_budget = selection_model_data_budget.drop(columns=algo_cols)
+        # Now attach columns t_0,...,t_((1000-budget)/50) with the achieved regrets for each budget
+        lookahead_budgets = list(range(budget, 1001, 50))
+        lookahead_performances = regrets_across_budget_and_algos[
+            (regrets_across_budget_and_algos["a1_budget"].isin(lookahead_budgets))
+        ]
+
+        # Pivot the lookahead performances to have one column per budget
+        lookahead_performances_pivoted = lookahead_performances.pivot(
+            index=["fid", "iid", "rep"],
+            columns="a1_budget",
+            values="achieved_regret"
+        )
+
+        # Rename the columns to t_0,...,t_((1000-budget)/50)
+        lookahead_performances_pivoted.columns = [f"t_{i}" for i in range(len(lookahead_performances_pivoted.columns))]
+
+        # Merge the lookahead performances with the selection model data
+        lookahead_model_data_budget = selection_model_data_budget.merge(   
+            lookahead_performances_pivoted,
+            on=["fid", "iid", "rep"],
+            how="left"
+        )
+
+        if normalize_lookahead_performances:
+            # Just like the normalization of the selection model data, we normalize the lookahead performances per function, across all lookahead budgets
+            for _, group in lookahead_model_data_budget.groupby("fid"):
+                idx = group.index
+                lookahead_matrix = lookahead_model_data_budget.loc[idx, [f"t_{i}" for i in range(len(lookahead_budgets))]].to_numpy()
+                flat_vals = lookahead_matrix.flatten().reshape(-1, 1)
+
+                scaler = MinMaxScaler(feature_range=(1e-12, 1))
+                flat_scaled = scaler.fit_transform(flat_vals).flatten()
+                lookahead_model_data_budget.loc[idx, [f"t_{i}" for i in range(len(lookahead_budgets))]] = flat_scaled.reshape(lookahead_matrix.shape)
+
+        lookahead_model_training_data[budget] = lookahead_model_data_budget
+
+        if store_final_data:
+            output_path = os.path.join(data_output_path, "lookahead_model_training_data")
+            os.makedirs(output_path, exist_ok=True)
+            budget_output_path = os.path.join(output_path, f"lookahead_model_training_data_budget_{budget}.csv")
+            lookahead_model_training_data[budget].to_csv(budget_output_path, index=False)
+            print(f"Lookahead model training data for budget {budget} saved to {budget_output_path}")
 
 class DynamicSelector:
     def __init__(self, switching_budgets: list = [50*i for i in range(1, 21)], data_path: str = "./data", results_path: str = "./results", model_path: str = "./models", load_models: bool = False):
@@ -463,11 +672,16 @@ class DynamicSelector:
         
         if not training_data_is_stored:
             selection_model_training_data, ela_scalers = create_selection_model_data(data_path=self.data_path, switching_budgets=self.switching_budgets, store_data=True)
-            switching_model_training_data = create_switch_model_data(selection_model_training_data, store_crossvalidated_predictions=True, store_optimal_budgets=True, store_final_data=True, data_output_path=self.data_path)
+            lookahead_model_training_data = create_lookahead_model_data(selection_model_training_data, normalize_lookahead_performances=True, store_final_data=True, data_output_path=self.data_path)
+            switching_model_training_data = create_switch_model_data(selection_model_training_data, lookahead_model_training_data, tie_breaking_strategy="highest_budget", store_crossvalidated_predictions=True, store_optimal_budgets=True, store_final_data=True, data_output_path=self.data_path)
         else:
             selection_model_training_data = {}
             switching_model_training_data = {}
             ela_scalers = {}
+
+            # ==============
+            # Final training for lookahead models needs to be added here
+            # ==============
 
             for budget in self.switching_budgets:
                 if budget == 1000: continue
@@ -495,7 +709,7 @@ class DynamicSelector:
             X_train_switch = switching_model_train_data.drop(columns=["fid", "iid", "rep", "high_level_category", "optimal_budget"])
             y_train_switch = switching_model_train_data["optimal_budget"]
 
-            switching_model = make_default_switching_model()
+            switching_model = make_default_wrapper_model(wrapper_type="RandomForestClassifierWrapper")
             switching_model.fit(X_train_switch, y_train_switch)
             self.models[budget]["switching_model"] = switching_model
             self.models[budget]["ela_scaler"] = ela_scalers[budget]
@@ -679,10 +893,19 @@ class DynamicSelector:
                     result_df.to_csv(output_path, mode="a", header=not os.path.exists(output_path), index=False)
 
 if __name__ == "__main__":    
-    # # Example usage
-    selector = DynamicSelector(data_path="./data", results_path="./results", load_models=True)
-    # selector.train_models(training_data_is_stored=False, store_trained_models=True)
-    results = selector.evaluate()
-    # for budget in [50*i for i in range(1, 20)]:
-    #     scaler = joblib.load(f"./models/budget_{budget}/ela_scaler.joblib")
-    #     print(budget, scaler)
+    # # # Example usage
+    # selector = DynamicSelector(data_path="./data", results_path="./results", load_models=True)
+    # # selector.train_models(training_data_is_stored=False, store_trained_models=True)
+    # results = selector.evaluate()
+    # # for budget in [50*i for i in range(1, 20)]:
+    # #     scaler = joblib.load(f"./models/budget_{budget}/ela_scaler.joblib")
+    # #     print(budget, scaler)
+
+    selection_model_training_data = {}
+    lookahead_model_training_data = {}
+
+    for budget in [50*i for i in range(1, 20)]:
+        selection_model_training_data[budget] = pd.read_csv(f"./data/selection_model_training_data/selection_model_training_data_budget_{budget}.csv")
+        lookahead_model_training_data[budget] = pd.read_csv(f"./data/lookahead_model_training_data/lookahead_model_training_data_budget_{budget}.csv")
+
+    create_switch_model_data(selection_model_training_data, lookahead_model_training_data, True, data_output_path="./data")
