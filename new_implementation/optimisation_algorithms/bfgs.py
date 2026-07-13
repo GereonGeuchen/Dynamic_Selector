@@ -11,7 +11,7 @@ from scipy.optimize._optimize import _line_search_wolfe12
 from scipy.optimize._optimize import _LineSearchError
 from scipy.optimize._optimize import OptimizeResult
 
-from algorithm import Algorithm
+from .algorithm import Algorithm
 
 
 

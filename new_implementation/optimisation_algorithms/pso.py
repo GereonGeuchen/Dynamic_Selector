@@ -2,7 +2,7 @@
 import math
 import numpy as np
 import copy
-from algorithm import Algorithm
+from .algorithm import Algorithm
 
 # setting up numpy random
 # np.random.seed()

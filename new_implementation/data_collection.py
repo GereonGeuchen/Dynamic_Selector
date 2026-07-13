@@ -22,17 +22,10 @@ from sklearn.metrics import auc
 from pathlib import Path
 
 # Import the algorithms to be used in A2
-
-sys.path.append(os.path.join(os.path.dirname(__file__), 'optimisation_algorithms')) 
-from bfgs import BFGS # type: ignore
-from pso import PSO # type: ignore
-from mlsl import MLSL # type: ignore
-from de import DE # type: ignore
+from optimisation_algorithms import BFGS, DE, MLSL, PSO
 
 # Import ELA feature calculation functions
-sys.path.append(os.path.join(os.path.dirname(__file__), 'pflacco'))
- 
-from classical_ela_features import ( # type: ignore
+from pflacco.classical_ela_features import (
     calculate_ela_distribution,
     calculate_ela_meta,
     calculate_ela_level,

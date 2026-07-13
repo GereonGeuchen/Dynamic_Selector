@@ -7,7 +7,7 @@ import datetime
 from scipy.special import gamma
 from scipy.optimize import minimize, Bounds
 
-from algorithm import Algorithm
+from .algorithm import Algorithm
 
 # setting up numpy random
 # np.random.seed()

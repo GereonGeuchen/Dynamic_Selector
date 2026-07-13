@@ -1,7 +1,7 @@
 from scipy.optimize._differentialevolution import DifferentialEvolutionSolver
 # from scipy_differentialevolution import DifferentialEvolutionSolver
 # import numpy as np
-from algorithm import Algorithm
+from .algorithm import Algorithm
 import numpy as np
 import copy
 from scipy.optimize import Bounds
@@ -91,5 +91,4 @@ class DE(Algorithm):
 #             print(f'evals: {self.func.evaluations} prec: {self.func.best_so_far_precision}')
 
 #         return self.func.best_so_far_variables, self.func.best_so_far_fvalue
-
 

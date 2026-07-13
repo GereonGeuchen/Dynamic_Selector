@@ -1,4 +1,4 @@
-from parameters import Parameters
+from .parameters import Parameters
 import numpy as np
 # from ioh import IOH_function
 # from IOHexperimenter import IOH_function

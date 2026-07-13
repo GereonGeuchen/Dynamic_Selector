@@ -7,7 +7,7 @@ from scipy.stats.qmc import Sobol
 from scipy.optimize import minimize as scipy_minimize
 from typing import List, Optional, Union
 
-from utils import _transform_bounds_to_canonical
+from .utils import _transform_bounds_to_canonical
 
 def create_initial_sample(
       dim: int,
