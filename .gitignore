@@ -1,1 +1,12 @@
 data_collection/data/run_data*
+
+new_implementation/data/raw_evaluations
+
+new_implementation/logs
+
+# Do not include all pycache files anywhere in the project
+__pycache__/
+
+logs/
+
+models/
