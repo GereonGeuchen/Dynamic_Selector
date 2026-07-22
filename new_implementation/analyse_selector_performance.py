@@ -1,133 +1,216 @@
-"""Create function-wise boxplots from DynamicSelector evaluation results.
+"""Plot achieved selector performance for every BBOB function.
 
-The script compares the selector with the virtual best solver (VBS) and the
-no-switch baseline separately for every BBOB function.  It can also include
-static selection models for selected switching budgets.
+Set ``METRIC`` below to either ``"regret"`` or ``"auc"`` and run this file.
+For each FID, the plot contains one box for every evaluated number of
+lookahead models, plus the VBS and the static selection model at B=150.
 """
 
-import argparse
 from math import ceil
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
 import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from sklearn.preprocessing import MinMaxScaler
+
+# Change this to "auc" to plot the AUC results instead.
+METRIC = "regret"
+
+RESULTS_DIR = Path("results")
+PLOT_DIR = Path("plots")
+STATIC_BUDGET = 150
+OUTPUT_FILENAME = "function_wise_lookahead_boxplots.pdf"
+PLOT_COLUMNS = 4
+KEY_COLUMNS = ["fid", "iid", "rep"]
+TAB20_COLOURS = [
+    "#1F77B4", "#AEC7E8", "#FF7F0E", "#FFBB78", "#2CA02C", "#98DF8A",
+    "#D62728", "#FF9896", "#9467BD", "#C5B0D5", "#8C564B", "#C49C94",
+    "#E377C2", "#F7B6D2", "#7F7F7F", "#C7C7C7", "#BCBD22", "#DBDB8D",
+    "#17BECF", "#9EDAE5",
+]
 
 
-METHOD_LABELS = {
-    "vbs": "VBS",
-    "selector": "Selector",
-    "no_switch": "No switch",
-}
-METHOD_COLOURS = {
-    "vbs": "#4C78A8",
-    "selector": "#F58518",
-    "no_switch": "#54A24B",
-}
+def lookahead_result_paths(metric_dir: Path) -> list[tuple[int, Path]]:
+    """Return available result CSVs ordered by their lookahead count."""
+    paths = []
+    for directory in metric_dir.glob("lookahead_*"):
+        try:
+            count = int(directory.name.removeprefix("lookahead_"))
+        except ValueError:
+            continue
+        result_path = directory / "selector_results.csv"
+        if result_path.is_file():
+            paths.append((count, result_path))
+    return sorted(paths)
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Create function-wise selector-performance boxplots."
-    )
-    parser.add_argument("--metric", choices=("regret", "auc"), default="regret")
-    parser.add_argument("--lookahead-count", type=int, default=0)
-    parser.add_argument(
-        "--input",
-        type=Path,
-        default=None,
-        help="Evaluation CSV. Defaults to results/<metric>/lookahead_<n>/selector_results.csv.",
-    )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=None,
-        help="Output image. Defaults beside the input CSV as function_wise_boxplots.png.",
-    )
-    parser.add_argument(
-        "--static-budgets",
-        type=int,
-        nargs="*",
-        default=[],
-        metavar="BUDGET",
-        help="Also plot static selection models, e.g. --static-budgets 50 300 650.",
-    )
-    parser.add_argument("--columns", type=int, default=4, help="Number of subplot columns.")
-    return parser.parse_args()
+def load_plot_data(metric: str) -> tuple[pd.DataFrame, list[str]]:
+    """Load selector values for all lookahead variants and the shared baselines."""
+    metric_dir = RESULTS_DIR / metric
+    result_paths = lookahead_result_paths(metric_dir)
+    if not result_paths:
+        raise FileNotFoundError(f"No selector results found in {metric_dir}/lookahead_*/")
+
+    achieved_column = f"achieved_{metric}"
+    vbs_column = f"vbs_{metric}"
+    static_column = f"static_B{STATIC_BUDGET}"
+
+    selector_frames = []
+    baseline = None
+    required_columns = [*KEY_COLUMNS, achieved_column, vbs_column, static_column]
+
+    for lookahead_count, result_path in result_paths:
+        results = pd.read_csv(result_path)
+        missing = [column for column in required_columns if column not in results.columns]
+        if missing:
+            raise ValueError(f"{result_path} is missing required columns: {', '.join(missing)}")
+
+        label = f"Lookahead {lookahead_count}"
+        selector_frames.append(
+            results.loc[:, [*KEY_COLUMNS, achieved_column]].rename(columns={achieved_column: label})
+        )
+        if baseline is None:
+            baseline = results.loc[:, [*KEY_COLUMNS, vbs_column, static_column]].rename(
+                columns={vbs_column: "VBS", static_column: f"Static B{STATIC_BUDGET}"}
+            )
+
+    assert baseline is not None
+    plot_data = baseline
+    lookahead_labels = []
+    for selector_frame in selector_frames:
+        label = selector_frame.columns[-1]
+        lookahead_labels.append(label)
+        plot_data = plot_data.merge(selector_frame, on=KEY_COLUMNS, how="inner", validate="one_to_one")
+
+    plot_data.to_csv(metric_dir / "selector_results_merged.csv", index=False)
+
+    return plot_data, ["VBS", *lookahead_labels, f"Static B{STATIC_BUDGET}"]
 
 
-def metric_columns(metric: str, static_budgets: list[int]) -> tuple[list[str], dict[str, str]]:
-    columns = [f"vbs_{metric}", f"achieved_{metric}", "no_switch"]
-    labels = {
-        f"vbs_{metric}": METHOD_LABELS["vbs"],
-        f"achieved_{metric}": METHOD_LABELS["selector"],
-        "no_switch": METHOD_LABELS["no_switch"],
-    }
-    for budget in static_budgets:
-        column = f"static_B{budget}"
-        columns.append(column)
-        labels[column] = f"Static B{budget}"
-    return columns, labels
+def normalise_per_function(results: pd.DataFrame, value_columns: list[str]) -> pd.DataFrame:
+    """Use one MinMaxScaler for all plotted methods together within each FID.
+
+    For a given function, the minimum value across every run and every plotted
+    method becomes 0 and the maximum becomes 1. Constant-valued functions are
+    set to 0 because no within-function variation is present.
+    """
+    normalised = results.copy()
+    for _, function_results in normalised.groupby("fid"):
+        values = function_results[value_columns].to_numpy(dtype=float)
+        scaler = MinMaxScaler()
+        normalised_values = scaler.fit_transform(values.reshape(-1, 1)).reshape(values.shape)
+        normalised.loc[function_results.index, value_columns] = normalised_values
+    return normalised
+
+
+def save_figure_as_pdf(figure: go.Figure, output_path: Path) -> None:
+    """Save one-page vector PDF using Plotly's native Kaleido export."""
+    try:
+        figure.write_image(output_path, format="pdf", width=2200, height=2520, scale=1)
+    except ValueError as error:
+        raise RuntimeError(
+            "Plotly PDF export requires Kaleido. Install it with: python -m pip install kaleido"
+        ) from error
 
 
 def plot_function_wise_boxplots(
-    results: pd.DataFrame,
-    metric: str,
-    output_path: Path,
-    static_budgets: list[int],
-    columns: int,
-) -> None:
-    """Save one boxplot panel per function, with one box per comparison method."""
-    value_columns, labels = metric_columns(metric, static_budgets)
-    missing = [column for column in value_columns if column not in results.columns]
-    if missing:
-        raise ValueError(f"The input CSV is missing required columns: {', '.join(missing)}")
-    if columns < 1:
-        raise ValueError("--columns must be at least 1.")
+    results: pd.DataFrame, value_columns: list[str], metric: str
+) -> Path:
+    """Save one Plotly-rendered PDF containing a boxplot panel for every FID."""
+    fids = sorted(results["fid"].unique())
+    if not fids:
+        raise ValueError("The result files do not contain any function IDs.")
 
-    functions = sorted(results["fid"].unique())
-    if not functions:
-        raise ValueError("The input CSV does not contain any function IDs.")
+    colours = [TAB20_COLOURS[index % len(TAB20_COLOURS)] for index in range(len(value_columns))]
+    output_directory = RESULTS_DIR / metric / PLOT_DIR
+    output_directory.mkdir(parents=True, exist_ok=True)
+    rows = ceil(len(fids) / PLOT_COLUMNS)
+    subplot_titles = [f"Function f{fid} (n={sum(results['fid'] == fid)})" for fid in fids]
+    subplot_titles.extend([""] * (rows * PLOT_COLUMNS - len(fids)))
+    figure = make_subplots(
+        rows=rows,
+        cols=PLOT_COLUMNS,
+        subplot_titles=subplot_titles,
+        vertical_spacing=0.04,
+        horizontal_spacing=0.04,
+    )
 
-    rows = ceil(len(functions) / columns)
-    figure, axes = plt.subplots(rows, columns, figsize=(4.4 * columns, 3.5 * rows), squeeze=False)
-    colours = [METHOD_COLOURS.get(column, "#B279A2") for column in value_columns]
-
-    for axis, fid in zip(axes.flat, functions):
+    for index, fid in enumerate(fids):
+        row = index // PLOT_COLUMNS + 1
+        column = index % PLOT_COLUMNS + 1
         function_results = results.loc[results["fid"] == fid, value_columns]
-        data = [function_results[column].dropna().to_numpy() for column in value_columns]
-        boxes = axis.boxplot(data, patch_artist=True, showfliers=False, medianprops={"color": "black"})
-        for box, colour in zip(boxes["boxes"], colours):
-            box.set_facecolor(colour)
-            box.set_alpha(0.85)
-        axis.set_title(f"Function f{fid} (n={len(function_results)})")
-        axis.set_xticks(range(1, len(value_columns) + 1), [labels[column] for column in value_columns], rotation=35, ha="right")
-        axis.set_ylabel(metric.capitalize())
-        axis.grid(axis="y", alpha=0.25)
+        for value_column, colour in zip(value_columns, colours):
+            figure.add_trace(
+                go.Box(
+                    y=function_results[value_column],
+                    name=value_column,
+                    marker_color=colour,
+                    line={"color": "#333333", "width": 1},
+                    fillcolor=colour,
+                    opacity=0.85,
+                    boxpoints=False,
+                    showlegend=False,
+                    hovertemplate=(
+                        f"{value_column}<br>{metric.upper()}: %{{y}}<extra>f{fid}</extra>"
+                    ),
+                ),
+                row=row,
+                col=column,
+            )
+        figure.update_xaxes(
+            categoryorder="array",
+            categoryarray=value_columns,
+            tickangle=35,
+            tickfont={"size": 8},
+            showline=True,
+            linewidth=1,
+            linecolor="#808080",
+            ticks="",
+            showgrid=False,
+            zeroline=False,
+            row=row,
+            col=column,
+        )
+        figure.update_yaxes(
+            title_text=f"Normalised {metric.upper()}",
+            title_font={"size": 13},
+            tickfont={"size": 10},
+            showline=True,
+            linewidth=1,
+            linecolor="#808080",
+            ticks="",
+            showgrid=True,
+            gridcolor="rgba(0, 0, 0, 0.25)",
+            gridwidth=1,
+            zeroline=False,
+            range=[0, 1],
+            row=row,
+            col=column,
+        )
 
-    for axis in list(axes.flat)[len(functions):]:
-        axis.set_visible(False)
-
-    legend = [Patch(facecolor=colour, label=labels[column], alpha=0.85) for column, colour in zip(value_columns, colours)]
-    figure.legend(handles=legend, loc="upper center", ncol=min(len(legend), 5), frameon=False)
-    figure.suptitle(f"{metric.capitalize()} by BBOB function", y=0.995)
-    figure.tight_layout(rect=(0, 0, 1, 0.97))
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(output_path, dpi=200, bbox_inches="tight")
-    plt.close(figure)
+    figure.update_layout(
+        title=f"Normalised achieved {metric.upper()} by BBOB function",
+        title_x=0.5,
+        title_font={"size": 24},
+        font={"size": 12},
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        height=420 * rows,
+        width=2200,
+        margin={"l": 80, "r": 50, "t": 110, "b": 50},
+        showlegend=False,
+    )
+    output_path = output_directory / OUTPUT_FILENAME
+    save_figure_as_pdf(figure, output_path)
+    return output_path
 
 
 def main() -> None:
-    args = parse_args()
-    input_path = args.input or Path("results") / args.metric / f"lookahead_{args.lookahead_count}" / "selector_results.csv"
-    output_path = args.output or input_path.with_name("function_wise_boxplots.png")
-    if not input_path.is_file():
-        raise FileNotFoundError(f"Evaluation results not found: {input_path}")
-
-    results = pd.read_csv(input_path)
-    if "fid" not in results.columns:
-        raise ValueError("The input CSV must contain a 'fid' column.")
-    plot_function_wise_boxplots(results, args.metric, output_path, args.static_budgets, args.columns)
+    if METRIC not in {"regret", "auc"}:
+        raise ValueError('METRIC must be either "regret" or "auc".')
+    results, value_columns = load_plot_data(METRIC)
+    results = normalise_per_function(results, value_columns)
+    output_path = plot_function_wise_boxplots(results, value_columns, METRIC)
     print(f"Saved function-wise boxplots to {output_path}")
 
 
