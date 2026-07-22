@@ -404,9 +404,6 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
         If not provided, all algorithms are run. For lower budgets, for which many ELA features are computed, it might be benificial
         to distribute the computation between algorithms across different jobs.
     """
-    achieved_regrets = {}
-    achieved_aucs = {}
-
     trigger = ioh.logger.trigger.Always()
 
     for A2, algname in zip([DE, MLSL, PSO, BFGS, None, None], ["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]):
@@ -418,6 +415,11 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
             continue
         if algname != "Non-elitist" and a1_budget == 1000:
             continue
+
+        # Keep performance results local to this algorithm so its output files
+        # can never contain rows produced by another algorithm.
+        achieved_regrets = {}
+        achieved_aucs = {}
 
         logger = ioh.logger.Analyzer(
             triggers=[trigger],
@@ -487,22 +489,28 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
                 df = pd.DataFrame(ela_features)
                 safe_df_to_csv(f'./data/ela_features/{algname}_B{a1_budget}_{dim}D', f"ELA_features.csv", df, append=True)
 
-    # Save the achieved regrets to a csv file for later use in model training/tuning
-    regrets_df = pd.DataFrame([{"fid": fid, "iid": iid, "rep": rep, "a1_budget": a1_budget, "algname": algname, "achieved_regret": regret} 
-                                for (fid, iid, rep, a1_budget, algname), regret in achieved_regrets.items()])
+        # Write this algorithm's results before moving to the next algorithm.
+        regrets_df = pd.DataFrame(
+            [{"fid": fid, "iid": iid, "rep": rep, "a1_budget": budget, "algname": result_algname, "achieved_regret": regret}
+             for (fid, iid, rep, budget, result_algname), regret in achieved_regrets.items()],
+            columns=["fid", "iid", "rep", "a1_budget", "algname", "achieved_regret"],
+        )
+        aucs_df = pd.DataFrame(
+            [{"fid": fid, "iid": iid, "rep": rep, "a1_budget": budget, "algname": result_algname, "achieved_auc": auc_value}
+             for (fid, iid, rep, budget, result_algname), auc_value in achieved_aucs.items()],
+            columns=["fid", "iid", "rep", "a1_budget", "algname", "achieved_auc"],
+        )
 
-    # Save the achieved AUCs to a csv file for later use in model training/tuning
-    aucs_df = pd.DataFrame([{"fid": fid, "iid": iid, "rep": rep, "a1_budget": a1_budget, "algname": algname, "achieved_auc": auc} 
-                            for (fid, iid, rep, a1_budget, algname), auc in achieved_aucs.items()])
-
-    if len(algs_to_run) < 6:
-        # store alg names in df name
-        algs_str = "_".join(algs_to_run)
-        safe_df_to_csv(f'./data/achieved_regrets/', f'achieved_regrets_{algs_str}_B{a1_budget}_{dim}D.csv', regrets_df)
-        safe_df_to_csv(f'./data/achieved_aucs/', f'achieved_aucs_{algs_str}_B{a1_budget}_{dim}D.csv', aucs_df)
-    else:
-        safe_df_to_csv(f'./data/achieved_regrets/', f'achieved_regrets_B{a1_budget}_{dim}D.csv', regrets_df)
-        safe_df_to_csv(f'./data/achieved_aucs/', f'achieved_aucs_B{a1_budget}_{dim}D.csv', aucs_df)
+        safe_df_to_csv(
+            './data/achieved_regrets/',
+            f'achieved_regrets_{algname}_B{a1_budget}_{dim}D.csv',
+            regrets_df,
+        )
+        safe_df_to_csv(
+            './data/achieved_aucs/',
+            f'achieved_aucs_{algname}_B{a1_budget}_{dim}D.csv',
+            aucs_df,
+        )
 
 if __name__ == "__main__":
     # Read budget from command line argument, default to 500 if not provided

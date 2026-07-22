@@ -27,6 +27,7 @@ VBS_METRIC_COLUMN = f"vbs_{METRIC}"
 SWITCHING_BUDGETS = [BUDGET_STEP * i for i in range(1, TOTAL_BUDGET // BUDGET_STEP + 1)]
 TRAINING_SWITCHING_BUDGETS = [budget for budget in SWITCHING_BUDGETS if budget != TOTAL_BUDGET]
 LOOKAHEAD_TARGET_PREFIX = "t_"
+MAX_LOOKAHEAD_COUNT = TOTAL_BUDGET // BUDGET_STEP
 
 TRAIN_IIDS = [1, 2, 3, 4, 5]
 TEST_IIDS = [6, 7]
@@ -43,6 +44,7 @@ META_COLS = ["fid", "iid", "rep", "high_level_category"]
 SELECTION_TRAINING_DATA_FOLDER = "selection_model_training_data"
 SWITCHING_TRAINING_DATA_FOLDER = "switching_model_training_data"
 LOOKAHEAD_TRAINING_DATA_FOLDER = "lookahead_model_training_data"
+SWITCHING_MODELS_FOLDER = "switching_models"
 
 def metric_scoped_path(base_path: str) -> str:
     """Return a metric-specific subdirectory under a base path, e.g. ./data/regret."""
@@ -98,6 +100,22 @@ def lookahead_target_cols(data: pd.DataFrame) -> list[str]:
 def switching_feature_cols(data: pd.DataFrame) -> list[str]:
     return [col for col in data.columns if col not in META_COLS + ["optimal_budget"]]
 
+def sorted_lookahead_cols(data: pd.DataFrame) -> list[str]:
+    """Return lookahead columns in their temporal order (t_0, t_1, ...)."""
+    return sorted(
+        (col for col in data.columns if col.startswith(LOOKAHEAD_TARGET_PREFIX)),
+        key=lambda col: int(col.removeprefix(LOOKAHEAD_TARGET_PREFIX)),
+    )
+
+def switching_model_variant_path(model_path: str, budget: int, lookahead_count: int) -> str:
+    """Return the folder for one switch-model lookahead ablation variant."""
+    return os.path.join(
+        model_path,
+        f"budget_{budget}",
+        SWITCHING_MODELS_FOLDER,
+        f"lookahead_{lookahead_count}",
+    )
+
 def drop_all_nan_ela_columns(ela_features: pd.DataFrame) -> pd.DataFrame:
     """Remove ELA columns that are entirely missing in the dataframe."""
     return ela_features.dropna(axis=1, how="all")
@@ -115,10 +133,12 @@ def train_lookahead_models(lookahead_model_training_data: pd.DataFrame) -> dict:
 
     return lookahead_models
 
-def add_lookahead_predictions(ela_features: pd.DataFrame, lookahead_models: dict) -> pd.DataFrame:
+def add_lookahead_predictions(ela_features: pd.DataFrame, lookahead_models: dict, lookahead_count: int) -> pd.DataFrame:
     # The switching model was trained on ELA features plus predicted future metric values.
     features_with_lookahead = ela_features.copy()
-    for target_col, lookahead_model in lookahead_models.items():
+    target_cols = sorted(lookahead_models, key=lambda col: int(col.removeprefix(LOOKAHEAD_TARGET_PREFIX)))
+    for target_col in target_cols[:lookahead_count]:
+        lookahead_model = lookahead_models[target_col]
         features_with_lookahead[target_col] = lookahead_model.predict(ela_features)
     return features_with_lookahead
 
@@ -758,7 +778,7 @@ class DynamicSelector:
             self.models = {
                 budget: {
                     "selection_model": None,
-                    "switching_model": None,
+                    "switching_models": {},
                     "lookahead_models": None,
                     "ela_scaler": None,
                 }
@@ -772,21 +792,39 @@ class DynamicSelector:
             if budget == TOTAL_BUDGET: continue
             budget_path = os.path.join(self.model_path, f"budget_{budget}")
             selection_model_path = os.path.join(budget_path, "selection_model.joblib")
-            switching_model_path = os.path.join(budget_path, "switching_model.joblib")
             lookahead_models_path = os.path.join(budget_path, "lookahead_models.joblib")
             ela_scaler_path = os.path.join(budget_path, f"ela_scaler.joblib")
+            switching_model_base_path = os.path.join(budget_path, SWITCHING_MODELS_FOLDER)
 
-            if not os.path.exists(selection_model_path) or not os.path.exists(switching_model_path) or not os.path.exists(lookahead_models_path):
+            if not os.path.exists(selection_model_path) or not os.path.exists(lookahead_models_path):
                 raise FileNotFoundError(f"Model files for budget {budget} not found in {budget_path}")
 
+            if not os.path.isdir(switching_model_base_path):
+                raise FileNotFoundError(
+                    f"Switching-model variants not found in {switching_model_base_path}. "
+                    "Retrain the models to create all lookahead variants."
+                )
+
             selection_model = joblib.load(selection_model_path)
-            switching_model = joblib.load(switching_model_path)
             lookahead_models = joblib.load(lookahead_models_path)
             ela_scaler = joblib.load(ela_scaler_path)
+            switching_models = {}
+
+            for lookahead_count in range(MAX_LOOKAHEAD_COUNT + 1):
+                variant_path = os.path.join(
+                    switching_model_base_path, f"lookahead_{lookahead_count}"
+                )
+                variant_model_path = os.path.join(variant_path, "switching_model.joblib")
+                if not os.path.exists(variant_model_path):
+                    raise FileNotFoundError(
+                        f"Lookahead variant {lookahead_count} for budget {budget} "
+                        f"is incomplete in {variant_path}"
+                )
+                switching_models[lookahead_count] = joblib.load(variant_model_path)
 
             models[budget] = {
                 "selection_model": selection_model,
-                "switching_model": switching_model,
+                "switching_models": switching_models,
                 "lookahead_models": lookahead_models,
                 "ela_scaler": ela_scaler,
             }
@@ -850,6 +888,7 @@ class DynamicSelector:
                 lookahead_model_training_data[budget] = pd.read_csv(lookahead_training_data_path(self.data_path, budget))
                 switching_model_training_data[budget] = pd.read_csv(switching_training_data_path(self.data_path, budget))
 
+        max_lookahead_count = MAX_LOOKAHEAD_COUNT
 
         for budget in self.switching_budgets:
             if budget == TOTAL_BUDGET: continue
@@ -872,14 +911,39 @@ class DynamicSelector:
             lookahead_models = train_lookahead_models(lookahead_model_training_data[budget])
             self.models[budget]["lookahead_models"] = lookahead_models
 
-            # 3. Switching model: decide whether the optimal switch point has been reached.
+            # 3. Switching models: decide whether the optimal switch point has
+            # been reached, once per requested number of lookahead predictions.
             switching_model_train_data = switching_model_training_data[budget]
-            X_train_switch = switching_model_train_data[switching_feature_cols(switching_model_train_data)]
             y_train_switch = switching_model_train_data["optimal_budget"]
+            available_lookahead_cols = sorted_lookahead_cols(switching_model_train_data)
+            base_switching_feature_cols = [
+                col for col in switching_feature_cols(switching_model_train_data)
+                if col not in available_lookahead_cols
+            ]
+            self.models[budget]["switching_models"] = {}
 
-            switching_model = make_default_wrapper_model(wrapper_type="RandomForestClassifierWrapper")
-            switching_model.fit(X_train_switch, y_train_switch)
-            self.models[budget]["switching_model"] = switching_model
+            for lookahead_count in range(max_lookahead_count + 1):
+                selected_lookahead_cols = available_lookahead_cols[:lookahead_count]
+                switch_feature_cols = base_switching_feature_cols + selected_lookahead_cols
+                print(
+                    f"Training switching model for budget {budget} with "
+                    f"{len(selected_lookahead_cols)} lookahead predictions..."
+                )
+
+                switching_model = make_default_wrapper_model(wrapper_type="RandomForestClassifierWrapper")
+                switching_model.fit(switching_model_train_data[switch_feature_cols], y_train_switch)
+                self.models[budget]["switching_models"][lookahead_count] = switching_model
+
+                if store_trained_models:
+                    variant_budget_path = switching_model_variant_path(
+                        self.model_path, budget, lookahead_count
+                    )
+                    os.makedirs(variant_budget_path, exist_ok=True)
+                    joblib.dump(
+                        switching_model,
+                        os.path.join(variant_budget_path, "switching_model.joblib"),
+                    )
+                    
             self.models[budget]["ela_scaler"] = ela_scalers[budget]
 
             if store_trained_models:
@@ -888,11 +952,10 @@ class DynamicSelector:
 
                 joblib.dump(selector, os.path.join(model_budget_path, "selection_model.joblib"))
                 joblib.dump(lookahead_models, os.path.join(model_budget_path, "lookahead_models.joblib"))
-                joblib.dump(switching_model, os.path.join(model_budget_path, "switching_model.joblib"))
 
                 joblib.dump(self.models[budget]["ela_scaler"], os.path.join(model_budget_path, f"ela_scaler.joblib"))
 
-    def simulate_single_run(self, fid: int, iid: int, rep: int, ela_rep: pd.DataFrame, metrics: pd.DataFrame) -> dict:
+    def simulate_single_run(self, fid: int, iid: int, rep: int, ela_rep: pd.DataFrame, metrics: pd.DataFrame, lookahead_count: int) -> dict:
         """
         Simulates a single run of the dynamic selector on a given instance, and returns the results.
 
@@ -932,10 +995,17 @@ class DynamicSelector:
                 index=[(fid, iid, rep)]
             )
 
-            # The switching model expects ELA features enriched with lookahead predictions.
-            switching_model = self.models[budget]["switching_model"]
+            switching_models = self.models[budget]["switching_models"]
+            if lookahead_count not in switching_models:
+                raise ValueError(
+                    f"No switching model with {lookahead_count} lookahead predictions "
+                    f"is loaded for budget {budget}."
+                )
+            switching_model = switching_models[lookahead_count]
             lookahead_models = self.models[budget]["lookahead_models"]
-            switching_features = add_lookahead_predictions(ela_features, lookahead_models)
+            switching_features = add_lookahead_predictions(
+                ela_features, lookahead_models, lookahead_count
+            )
            
             switch_decision = switching_model.predict(switching_features)[0]
 
@@ -976,18 +1046,25 @@ class DynamicSelector:
         }
         
 
-    def evaluate(self) -> None:
+    def evaluate(self, lookahead_count: int) -> None:
 
         # 1. Check that models are loaded
+        if lookahead_count < 0:
+            raise ValueError("lookahead_count must be non-negative.")
         for budget in self.switching_budgets:
             if budget == TOTAL_BUDGET: continue
             if (
                 self.models[budget]["selection_model"] is None
-                or self.models[budget]["switching_model"] is None
+                or not self.models[budget]["switching_models"]
                 or self.models[budget]["lookahead_models"] is None
                 or self.models[budget]["ela_scaler"] is None
             ):
                 raise ValueError(f"Models for budget {budget} are not loaded. Models must be trained and loaded before evaluation.")
+            if lookahead_count not in self.models[budget]["switching_models"]:
+                raise ValueError(
+                    f"No switching model with {lookahead_count} lookahead predictions "
+                    f"is loaded for budget {budget}."
+                )
 
         # 2. Load data
         metrics = pd.concat(
@@ -1008,6 +1085,13 @@ class DynamicSelector:
         ela_features = pd.read_csv(ela_features_path(self.raw_data_path, NO_SWITCH_ALGORITHM, TOTAL_BUDGET))
         # Only keep rows where iid is in the test set
         ela_features = ela_features[ela_features["iid"].isin(TEST_IIDS)]
+
+        result_path_with_lookahead_count = os.path.join(
+            self.results_path,
+            f"lookahead_{lookahead_count}",
+        )
+        os.makedirs(result_path_with_lookahead_count, exist_ok=True)
+
         for fid in range(1, 25):
             for iid in TEST_IIDS:
                 for rep in range(0, 20):
@@ -1019,7 +1103,9 @@ class DynamicSelector:
                         (ela_features["rep"] == rep)
                     ].drop(columns=["a1_budget", "a2_algorithm"] + META_COLS)
 
-                    result = self.simulate_single_run(fid, iid, rep, ela_features_rep, metrics)
+                    result = self.simulate_single_run(
+                        fid, iid, rep, ela_features_rep, metrics, lookahead_count
+                    )
 
                     # Collect predictions of static selection models
                     for budget in self.switching_budgets:
@@ -1044,8 +1130,12 @@ class DynamicSelector:
                     result["no_switch"] = get_metric_value(metrics, fid, iid, rep, NO_SWITCH_ALGORITHM, TOTAL_BUDGET)
 
                     result_df = pd.DataFrame([result])
-                    output_path = os.path.join(self.results_path, "selector_results.csv")
-                    os.makedirs(self.results_path, exist_ok=True)
+
+                    output_path = os.path.join(
+                        self.results_path,
+                        f"lookahead_{lookahead_count}",
+                        "selector_results.csv",
+                    )
                     result_df.to_csv(output_path, mode="a", header=not os.path.exists(output_path), index=False)
 
 def build_switching_training_data_from_stored_tables(data_path: str) -> None:
@@ -1109,6 +1199,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--results-path", default="./results", help=f"Base results directory. Outputs are written under <results-path>/{METRIC}.")
     parser.add_argument("--model-path", default="./models", help=f"Base model directory. Models are saved/loaded under <model-path>/{METRIC}.")
     parser.add_argument(
+        "--lookahead-count",
+        type=int,
+        help="Number of lookahead predictions used by switching models during evaluation.",
+    )
+    parser.add_argument(
         "--training-data-is-stored",
         action="store_true",
         help="Load prepared training tables instead of recreating them during training.",
@@ -1129,13 +1224,15 @@ def main() -> None:
         return
 
     if args.mode == "evaluate":
+        if args.lookahead_count is None:
+            raise ValueError("--lookahead-count is required when --mode evaluate")
         selector = DynamicSelector(
             data_path=args.data_path,
             results_path=args.results_path,
             model_path=args.model_path,
             load_models=True,
         )
-        selector.evaluate()
+        selector.evaluate(args.lookahead_count)
         return
 
     selector = DynamicSelector(
@@ -1150,7 +1247,9 @@ def main() -> None:
     )
 
     if args.mode == "train-evaluate":
-        selector.evaluate()
+        if args.lookahead_count is None:
+            raise ValueError("--lookahead-count is required when --mode train-evaluate")
+        selector.evaluate(args.lookahead_count)
 
 
 if __name__ == "__main__":
