@@ -214,7 +214,7 @@ class Switched_From_CMA():
         algorithm.set_stopping_criteria(stopping_criteria)
         algorithm.run()
 
-def safe_df_to_csv(folder_path, file_name, df, append=True):
+def safe_df_to_csv(folder_path, file_name, df, append=False):
     """
     Safely saves a DataFrame to a CSV file, ensuring that the target directory exists.
 
@@ -226,6 +226,8 @@ def safe_df_to_csv(folder_path, file_name, df, append=True):
         The name of the CSV file (including .csv extension).
     df : pandas.DataFrame
         The DataFrame to be saved as a CSV file.
+    append : bool, optional
+        Append to an existing file when True. The default replaces it.
     """
     os.makedirs(folder_path, exist_ok=True)
 
@@ -421,6 +423,13 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
         achieved_regrets = {}
         achieved_aucs = {}
 
+        # ELA rows are written once per function below. Remove a previous run's
+        # file once here, then append only the chunks produced by this run.
+        ela_output_folder = f'./data/ela_features/{algname}_B{a1_budget}_{dim}D'
+        ela_output_path = os.path.join(ela_output_folder, "ELA_features.csv")
+        if os.path.exists(ela_output_path):
+            os.remove(ela_output_path)
+
         logger = ioh.logger.Analyzer(
             triggers=[trigger],
             folder_name=f'./data/raw_evaluations/{algname}_B{a1_budget}_{dim}D',
@@ -487,7 +496,7 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
 
             if ela_features:
                 df = pd.DataFrame(ela_features)
-                safe_df_to_csv(f'./data/ela_features/{algname}_B{a1_budget}_{dim}D', f"ELA_features.csv", df, append=True)
+                safe_df_to_csv(ela_output_folder, "ELA_features.csv", df, append=True)
 
         # Write this algorithm's results before moving to the next algorithm.
         regrets_df = pd.DataFrame(

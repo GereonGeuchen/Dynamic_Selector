@@ -10,7 +10,7 @@ import os
 from asf.predictors import RandomForestClassifierWrapper, RandomForestRegressorWrapper
 from asf.selectors import PerformanceModel
 from ConfigSpace import ConfigurationSpace
-
+from functools import partial
 from sklearn.preprocessing import MinMaxScaler
 
 # Experiment setup. Changing these constants changes the data folders and column
@@ -151,22 +151,9 @@ def make_default_performance_model():
     performance_model: PerformanceModel
         The created PerformanceModel.
     """
-    cs = ConfigurationSpace()
-    cs_transform = {}
 
-    cs, cs_transform = PerformanceModel.get_configuration_space(
-        cs=cs,
-        cs_transform=cs_transform,
-        parent_param=None,
-        parent_value=str(PerformanceModel.__name__),
-    )
-
-    default_config = cs.get_default_configuration()
-
-    return PerformanceModel.get_from_configuration(
-        default_config,
-        cs_transform=None,
-        random_state=42,
+    return PerformanceModel(
+        model_class=partial(RandomForestRegressorWrapper, random_state=42, n_jobs=8),
     )
 
 def make_default_wrapper_model(wrapper_type: str = "RandomForestClassifierWrapper"):
@@ -183,12 +170,10 @@ def make_default_wrapper_model(wrapper_type: str = "RandomForestClassifierWrappe
     wrapper_model: RandomForestClassifierWrapper or RandomForestRegressorWrapper
     """
     if wrapper_type == "RandomForestClassifierWrapper":
-        default_classifier_config = RandomForestClassifierWrapper.get_configuration_space().get_default_configuration()
-        default_classifier = RandomForestClassifierWrapper.get_from_configuration(default_classifier_config, random_state=42)()
+        default_classifier = RandomForestClassifierWrapper(random_state=42, n_jobs=8)
         return default_classifier
     else:
-        default_regressor_config = RandomForestRegressorWrapper.get_configuration_space().get_default_configuration()
-        default_regressor = RandomForestRegressorWrapper.get_from_configuration(default_regressor_config, random_state=42)()
+        default_regressor = RandomForestRegressorWrapper(random_state=42, n_jobs=8)
         return default_regressor
 
 def normalise_selection_model_data(selection_model_data) -> tuple[pd.DataFrame, MinMaxScaler]:
@@ -318,7 +303,7 @@ def create_selection_model_data(data_path: str, switching_budgets: list, store_d
 
     return selection_model_data, ela_scalers
 
-def get_crossvalidated_predictions(selection_model_training_data: dict, store: bool = False, data_output_path: str = "./data", 
+def get_crossvalidated_predictions(selection_model_training_data: dict, store: bool = False, data_output_path: str = "./data",
                                    no_switch_metric_path: str | None = None) -> pd.DataFrame:
     """
     Performs leave-one-instance-out cross-validation for each switching budget, and returns a DataFrame containing the predictions and actual metric values for each (fid, iid, rep) and switching budget.
@@ -340,7 +325,16 @@ def get_crossvalidated_predictions(selection_model_training_data: dict, store: b
         A DataFrame containing the predictions and actual metric values for each (fid, iid, rep) and switching budget.
     """
     if no_switch_metric_path is None:
-        no_switch_metric_path = achieved_metric_path(data_output_path, NO_SWITCH_ALGORITHM, TOTAL_BUDGET)
+        raw_data_path = data_output_path
+        if os.path.basename(os.path.normpath(raw_data_path)) == METRIC:
+            raw_data_path = os.path.dirname(os.path.normpath(raw_data_path))
+        no_switch_metric_path = achieved_metric_path(
+            raw_data_path, NO_SWITCH_ALGORITHM, TOTAL_BUDGET
+        )
+    else:
+        # Raw metric files live in sibling achieved_<metric>s/ and ela_features/
+        # directories below the same data root.
+        raw_data_path = os.path.dirname(os.path.dirname(no_switch_metric_path))
 
     no_switch_metrics = pd.read_csv(no_switch_metric_path)
 
@@ -348,6 +342,18 @@ def get_crossvalidated_predictions(selection_model_training_data: dict, store: b
     no_switch_metrics = no_switch_metrics[no_switch_metrics["iid"].isin(TRAIN_IIDS)]
 
     switching_budgets = sorted(selection_model_training_data.keys())
+
+    # Selection-model targets are normalized independently per budget. Keep
+    # that normalization for fitting, but use the original metric values when
+    # comparing the selected outcomes across budgets.
+    raw_metrics = pd.concat(
+        [
+            pd.read_csv(achieved_metric_path(raw_data_path, algo, budget))
+            for algo in SWITCH_ALGORITHMS
+            for budget in switching_budgets
+        ] + [no_switch_metrics],
+        ignore_index=True,
+    )
 
     algo_cols = ALGORITHMS
 
@@ -394,12 +400,9 @@ def get_crossvalidated_predictions(selection_model_training_data: dict, store: b
 
 
             for (fid, iid, rep), [(algo, _)] in predictions.items():
-                actual_value = cv_test_data.loc[
-                    (cv_test_data["fid"] == fid)
-                    & (cv_test_data["iid"] == iid)
-                    & (cv_test_data["rep"] == rep),
-                    algo
-                ].values[0]
+                actual_value = get_metric_value(
+                    raw_metrics, fid, iid, rep, algo, budget
+                )
 
                 prediction_rows.append({
                     "fid": fid,
@@ -586,17 +589,14 @@ def create_switch_model_data(selection_model_training_data: dict[int, pd.DataFra
 
     switching_budgets = sorted(selection_model_training_data.keys())
 
-    crossvalidated_predictions_path = os.path.join(metric_scoped_path(data_output_path), "crossvalidated_predictions.csv")
-    if os.path.exists(crossvalidated_predictions_path):
-        print(f"Loading cross-validated predictions from {crossvalidated_predictions_path}...")
-        crossvalidated_predictions = pd.read_csv(crossvalidated_predictions_path)
-    else:
-        crossvalidated_predictions = get_crossvalidated_predictions(
-            selection_model_training_data,
-            store=store_crossvalidated_predictions,
-            data_output_path=data_output_path,
-            no_switch_metric_path=no_switch_metric_path,
-        )
+    # Recompute rather than silently reusing a potentially stale table. When
+    # stored, to_csv replaces the previous cross-validation output.
+    crossvalidated_predictions = get_crossvalidated_predictions(
+        selection_model_training_data,
+        store=store_crossvalidated_predictions,
+        data_output_path=data_output_path,
+        no_switch_metric_path=no_switch_metric_path,
+    )
 
 
 
@@ -1091,6 +1091,12 @@ class DynamicSelector:
             f"lookahead_{lookahead_count}",
         )
         os.makedirs(result_path_with_lookahead_count, exist_ok=True)
+        output_path = os.path.join(
+            result_path_with_lookahead_count,
+            "selector_results.csv",
+        )
+        if os.path.exists(output_path):
+            os.remove(output_path)
 
         for fid in range(1, 25):
             for iid in TEST_IIDS:
@@ -1131,11 +1137,6 @@ class DynamicSelector:
 
                     result_df = pd.DataFrame([result])
 
-                    output_path = os.path.join(
-                        self.results_path,
-                        f"lookahead_{lookahead_count}",
-                        "selector_results.csv",
-                    )
                     result_df.to_csv(output_path, mode="a", header=not os.path.exists(output_path), index=False)
 
 def build_switching_training_data_from_stored_tables(data_path: str) -> None:
