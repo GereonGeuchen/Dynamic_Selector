@@ -11,7 +11,6 @@ from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from sklearn.preprocessing import MinMaxScaler
 
 # Change this to "auc" to plot the AUC results instead.
 METRIC = "regret"
@@ -87,22 +86,6 @@ def load_plot_data(metric: str) -> tuple[pd.DataFrame, list[str]]:
     return plot_data, ["VBS", *lookahead_labels, f"Static B{STATIC_BUDGET}"]
 
 
-def normalise_per_function(results: pd.DataFrame, value_columns: list[str]) -> pd.DataFrame:
-    """Use one MinMaxScaler for all plotted methods together within each FID.
-
-    For a given function, the minimum value across every run and every plotted
-    method becomes 0 and the maximum becomes 1. Constant-valued functions are
-    set to 0 because no within-function variation is present.
-    """
-    normalised = results.copy()
-    for _, function_results in normalised.groupby("fid"):
-        values = function_results[value_columns].to_numpy(dtype=float)
-        scaler = MinMaxScaler()
-        normalised_values = scaler.fit_transform(values.reshape(-1, 1)).reshape(values.shape)
-        normalised.loc[function_results.index, value_columns] = normalised_values
-    return normalised
-
-
 def save_figure_as_pdf(figure: go.Figure, output_path: Path) -> None:
     """Save one-page vector PDF using Plotly's native Kaleido export."""
     try:
@@ -172,9 +155,10 @@ def plot_function_wise_boxplots(
             col=column,
         )
         figure.update_yaxes(
-            title_text=f"Normalised {metric.upper()}",
+            title_text=metric.upper(),
             title_font={"size": 13},
             tickfont={"size": 10},
+            type="log",
             showline=True,
             linewidth=1,
             linecolor="#808080",
@@ -183,13 +167,12 @@ def plot_function_wise_boxplots(
             gridcolor="rgba(0, 0, 0, 0.25)",
             gridwidth=1,
             zeroline=False,
-            range=[0, 1],
             row=row,
             col=column,
         )
 
     figure.update_layout(
-        title=f"Normalised achieved {metric.upper()} by BBOB function",
+        title=f"Achieved {metric.upper()} by BBOB function",
         title_x=0.5,
         title_font={"size": 24},
         font={"size": 12},
@@ -209,7 +192,6 @@ def main() -> None:
     if METRIC not in {"regret", "auc"}:
         raise ValueError('METRIC must be either "regret" or "auc".')
     results, value_columns = load_plot_data(METRIC)
-    results = normalise_per_function(results, value_columns)
     output_path = plot_function_wise_boxplots(results, value_columns, METRIC)
     print(f"Saved function-wise boxplots to {output_path}")
 
