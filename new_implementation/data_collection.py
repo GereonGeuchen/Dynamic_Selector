@@ -9,6 +9,7 @@ This file contains the implementation of the data collection process. This inclu
 from dataclasses import dataclass, fields
 import os
 import sys
+from pathlib import Path
 import pandas as pd
 import warnings
 
@@ -407,6 +408,7 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
         to distribute the computation between algorithms across different jobs.
     """
     trigger = ioh.logger.trigger.Always()
+    data_root = Path("data") / f"dim_{dim}"
 
     for A2, algname in zip([DE, MLSL, PSO, BFGS, None, None], ["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]):
         if algname not in algs_to_run:
@@ -425,14 +427,14 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
 
         # ELA rows are written once per function below. Remove a previous run's
         # file once here, then append only the chunks produced by this run.
-        ela_output_folder = f'./data/ela_features/{algname}_B{a1_budget}_{dim}D'
-        ela_output_path = os.path.join(ela_output_folder, "ELA_features.csv")
+        ela_output_folder = data_root / "ela_features" / f"{algname}_B{a1_budget}_{dim}D"
+        ela_output_path = ela_output_folder / "ELA_features.csv"
         if os.path.exists(ela_output_path):
             os.remove(ela_output_path)
 
         logger = ioh.logger.Analyzer(
             triggers=[trigger],
-            folder_name=f'./data/raw_evaluations/{algname}_B{a1_budget}_{dim}D',
+            folder_name=str(data_root / "raw_evaluations" / f"{algname}_B{a1_budget}_{dim}D"),
             algorithm_name=algname,
             store_positions=True,
         )
@@ -511,12 +513,12 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
         )
 
         safe_df_to_csv(
-            './data/achieved_regrets/',
+            str(data_root / "achieved_regrets"),
             f'achieved_regrets_{algname}_B{a1_budget}_{dim}D.csv',
             regrets_df,
         )
         safe_df_to_csv(
-            './data/achieved_aucs/',
+            str(data_root / "achieved_aucs"),
             f'achieved_aucs_{algname}_B{a1_budget}_{dim}D.csv',
             aucs_df,
         )
@@ -533,7 +535,9 @@ if __name__ == "__main__":
     else:
         algorithms_to_run = ["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]
 
-    # a1_budget = 500
-    # algorithms_to_run = ["BFGS"]
+    if len(sys.argv) > 3:
+        dimension = int(sys.argv[3])
+    else:
+        dimension = 40
 
-    collect_data(a1_budget=a1_budget, dim=5, algs_to_run=algorithms_to_run)
+    collect_data(a1_budget=a1_budget, dim=dimension, algs_to_run=algorithms_to_run)

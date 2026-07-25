@@ -14,8 +14,9 @@ from plotly.subplots import make_subplots
 
 # Change this to "auc" to plot the AUC results instead.
 METRIC = "regret"
+DIM = 40
 
-RESULTS_DIR = Path("results")
+RESULTS_DIR = Path("results") / f"dim_{DIM}"
 PLOT_DIR = Path("plots")
 STATIC_BUDGET = 150
 OUTPUT_FILENAME = "function_wise_lookahead_boxplots.pdf"

@@ -17,7 +17,7 @@ from sklearn.preprocessing import MinMaxScaler
 # names that the selector reads from and writes to.
 TOTAL_BUDGET = 1000
 BUDGET_STEP = 50
-DIM = 5
+DIM = 40
 METRIC = "regret"
 
 METRIC_COLUMN = f"achieved_{METRIC}"
@@ -52,6 +52,15 @@ def metric_scoped_path(base_path: str) -> str:
     if os.path.basename(normalized) == METRIC:
         return normalized
     return os.path.join(base_path, METRIC)
+
+
+def dimension_scoped_path(base_path: str) -> str:
+    """Return the dimension-specific experiment directory under a base path."""
+    dimension_directory = f"dim_{DIM}"
+    normalized = os.path.normpath(base_path)
+    if os.path.basename(normalized) == dimension_directory:
+        return normalized
+    return os.path.join(base_path, dimension_directory)
 
 # Path helpers encode the file naming convention created by data_collection.py.
 def achieved_metric_path(data_path: str, algorithm: str, budget: int) -> str:
@@ -766,11 +775,12 @@ class DynamicSelector:
         load_models: bool, optional
             Whether to load the trained models from model_path. If False, the models will be initialized as None and need to be trained using train_models before evaluation. Default is False.
         """
-        self.results_path = metric_scoped_path(results_path)
+        self.results_path = metric_scoped_path(dimension_scoped_path(results_path))
         self.switching_budgets = list(switching_budgets)
-        self.raw_data_path = data_path
+        self.raw_data_path = dimension_scoped_path(data_path)
         self.data_path = metric_scoped_path(data_path)
-        self.model_path = metric_scoped_path(model_path)
+        self.data_path = metric_scoped_path(self.raw_data_path)
+        self.model_path = metric_scoped_path(dimension_scoped_path(model_path))
         
         if load_models:
             self.models = self.load_models_from_folder()
@@ -1140,8 +1150,8 @@ class DynamicSelector:
                     result_df.to_csv(output_path, mode="a", header=not os.path.exists(output_path), index=False)
 
 def build_switching_training_data_from_stored_tables(data_path: str) -> None:
-    raw_data_path = data_path
-    data_path = metric_scoped_path(data_path)
+    raw_data_path = dimension_scoped_path(data_path)
+    data_path = metric_scoped_path(raw_data_path)
     selection_model_training_data = {}
     lookahead_model_training_data = {}
 
@@ -1196,9 +1206,9 @@ def parse_args() -> argparse.Namespace:
         default="build-switch-data",
         help="Workflow to run. The default preserves the historical script behavior.",
     )
-    parser.add_argument("--data-path", default="./data", help=f"Base data directory. Selector-generated tables use <data-path>/{METRIC}; raw data_collection inputs are read from either <data-path> or <data-path>/{METRIC}.")
-    parser.add_argument("--results-path", default="./results", help=f"Base results directory. Outputs are written under <results-path>/{METRIC}.")
-    parser.add_argument("--model-path", default="./models", help=f"Base model directory. Models are saved/loaded under <model-path>/{METRIC}.")
+    parser.add_argument("--data-path", default="./data", help=f"Base data directory. Dimension {DIM} uses <data-path>/dim_{DIM}; selector tables are stored below its {METRIC} subdirectory.")
+    parser.add_argument("--results-path", default="./results", help=f"Base results directory. Dimension {DIM} outputs are written under <results-path>/dim_{DIM}/{METRIC}.")
+    parser.add_argument("--model-path", default="./models", help=f"Base model directory. Dimension {DIM} models are saved/loaded under <model-path>/dim_{DIM}/{METRIC}.")
     parser.add_argument(
         "--lookahead-count",
         type=int,
