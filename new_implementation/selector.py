@@ -18,7 +18,7 @@ from sklearn.preprocessing import MinMaxScaler
 TOTAL_BUDGET = 1000
 BUDGET_STEP = 50
 DIM = 40
-METRIC = "regret"
+METRIC = "auc"
 
 METRIC_COLUMN = f"achieved_{METRIC}"
 ACTUAL_METRIC_COLUMN = f"actual_{METRIC}"
@@ -162,7 +162,10 @@ def make_default_performance_model():
     """
 
     return PerformanceModel(
-        model_class=partial(RandomForestRegressorWrapper, random_state=42, n_jobs=8),
+        model_class=partial(
+            RandomForestRegressorWrapper,
+            init_params={"random_state": 42, "n_jobs": 8},
+        ),
     )
 
 def make_default_wrapper_model(wrapper_type: str = "RandomForestClassifierWrapper"):
@@ -179,10 +182,14 @@ def make_default_wrapper_model(wrapper_type: str = "RandomForestClassifierWrappe
     wrapper_model: RandomForestClassifierWrapper or RandomForestRegressorWrapper
     """
     if wrapper_type == "RandomForestClassifierWrapper":
-        default_classifier = RandomForestClassifierWrapper(random_state=42, n_jobs=8)
+        default_classifier = RandomForestClassifierWrapper(
+            init_params={"random_state": 42, "n_jobs": 8}
+        )
         return default_classifier
     else:
-        default_regressor = RandomForestRegressorWrapper(random_state=42, n_jobs=8)
+        default_regressor = RandomForestRegressorWrapper(
+            init_params={"random_state": 42, "n_jobs": 8}
+        )
         return default_regressor
 
 def normalise_selection_model_data(selection_model_data) -> tuple[pd.DataFrame, MinMaxScaler]:

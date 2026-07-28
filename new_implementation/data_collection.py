@@ -386,7 +386,8 @@ def calculate_ela_features(evaluations, fid, iid, rep, a1_budget, dim, algname):
     return features
 
 
-def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]):
+def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"],
+                 fids=range(1, 25), output_suffix=""):
     """
     This function runs the optimisation algorithms on the BBOB instances and logs
     their evaluations. It additionally computes ELA features every 50 evaluations
@@ -406,8 +407,16 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
         The list of algorithms to run. Possible values are "DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist". 
         If not provided, all algorithms are run. For lower budgets, for which many ELA features are computed, it might be benificial
         to distribute the computation between algorithms across different jobs.
+
+    fids : iterable of int, optional
+        Function IDs to process.  Supplying disjoint subsets makes independent
+        Slurm-array tasks possible.
+
+    output_suffix : str, optional
+        Suffix for output filenames, e.g. ".part-7".  Array tasks must use a
+        distinct suffix and be merged after they all complete.
     """
-    trigger = ioh.logger.trigger.Always()
+    trigger = ioh.logger.trigger.OnImprovement()
     data_root = Path("data") / f"dim_{dim}"
 
     for A2, algname in zip([DE, MLSL, PSO, BFGS, None, None], ["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]):
@@ -428,7 +437,8 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
         # ELA rows are written once per function below. Remove a previous run's
         # file once here, then append only the chunks produced by this run.
         ela_output_folder = data_root / "ela_features" / f"{algname}_B{a1_budget}_{dim}D"
-        ela_output_path = ela_output_folder / "ELA_features.csv"
+        ela_filename = f"ELA_features{output_suffix}.csv"
+        ela_output_path = ela_output_folder / ela_filename
         if os.path.exists(ela_output_path):
             os.remove(ela_output_path)
 
@@ -440,7 +450,7 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
         )
         tracked_parameters = TrackedParameters()
         logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])
-        for fid in range(1, 25):
+        for fid in fids:
             ela_features = []
             for iid in range(1, 8):
 
@@ -463,13 +473,15 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
                         alg(problem, A2)
             
                     # Calculate ELA features every 50 evaluations and save to csv
-                    for i in range(50, 1001, 50):
-                        # If the algorithm is not Non-elitist, we only calculate features if budget > A1_budget to avoid redundancy
-                        if algname != "Non-elitist" and i <= a1_budget:
-                            continue
+                    # === Only do it for Non-elitist
+                    if algname == "Non-elitist":
+                        for i in range(50, 1001, 50):
+                            # If the algorithm is not Non-elitist, we only calculate features if budget > A1_budget to avoid redundancy
+                            if algname != "Non-elitist" and i <= a1_budget:
+                                continue
 
-                        current_evaluations = {j: v for j, v in problem.function_evals.items() if j <= i}
-                        ela_features.append(calculate_ela_features(current_evaluations, fid, iid, rep, a1_budget, dim, algname))
+                            current_evaluations = {j: v for j, v in problem.function_evals.items() if j <= i}
+                            ela_features.append(calculate_ela_features(current_evaluations, fid, iid, rep, a1_budget, dim, algname))
 
                     # The achieved regret of this specific run is the lowest objective value 
                     # that is within 1000 evals and within bounds
@@ -498,7 +510,10 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
 
             if ela_features:
                 df = pd.DataFrame(ela_features)
-                safe_df_to_csv(ela_output_folder, "ELA_features.csv", df, append=True)
+                # If dim is too high, ela_meta.quad_simple.cond might be inf
+                if dim == 40:
+                    df = df.drop(columns=["ela_meta.quad_simple.cond"], errors="ignore")
+                safe_df_to_csv(ela_output_folder, ela_filename, df, append=True)
 
         # Write this algorithm's results before moving to the next algorithm.
         regrets_df = pd.DataFrame(
@@ -514,12 +529,12 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
 
         safe_df_to_csv(
             str(data_root / "achieved_regrets"),
-            f'achieved_regrets_{algname}_B{a1_budget}_{dim}D.csv',
+            f'achieved_regrets_{algname}_B{a1_budget}_{dim}D{output_suffix}.csv',
             regrets_df,
         )
         safe_df_to_csv(
             str(data_root / "achieved_aucs"),
-            f'achieved_aucs_{algname}_B{a1_budget}_{dim}D.csv',
+            f'achieved_aucs_{algname}_B{a1_budget}_{dim}D{output_suffix}.csv',
             aucs_df,
         )
 
@@ -540,4 +555,20 @@ if __name__ == "__main__":
     else:
         dimension = 40
 
-    collect_data(a1_budget=a1_budget, dim=dimension, algs_to_run=algorithms_to_run)
+    if len(sys.argv) > 4:
+        function_ids = [int(fid) for fid in sys.argv[4].split(",")]
+    else:
+        function_ids = range(1, 25)
+
+    if len(sys.argv) > 5:
+        suffix = sys.argv[5]
+    else:
+        suffix = ""
+
+    collect_data(
+        a1_budget=a1_budget,
+        dim=dimension,
+        algs_to_run=algorithms_to_run,
+        fids=function_ids,
+        output_suffix=suffix,
+    )
