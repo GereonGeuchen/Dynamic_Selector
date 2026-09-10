@@ -11,10 +11,15 @@ from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from tqdm.auto import tqdm
+
+import plotly.io as pio
 
 # Change this to "auc" to plot the AUC results instead.
-METRIC = "regret"
+METRIC = "auc"
 DIM = 40
+# None includes all available values; otherwise use lists such as [1, 5, 10].
+LOOKAHEAD_COUNTS = [0,10,20]
 
 RESULTS_DIR = Path("results") / f"dim_{DIM}"
 PLOT_DIR = Path("plots")
@@ -98,18 +103,36 @@ def save_figure_as_pdf(figure: go.Figure, output_path: Path) -> None:
 
 
 def plot_function_wise_boxplots(
-    results: pd.DataFrame, value_columns: list[str], metric: str
+    results: pd.DataFrame, value_columns: list[str], metric: str,
+    lookahead_counts: list[int] | None = None,
 ) -> Path:
-    """Save one Plotly-rendered PDF containing a boxplot panel for every FID."""
+    """Plot selected lookahead counts for every FID, retaining VBS and static B150.
+
+    None selects all available values. Explicit lists preserve their order;
+    an empty lookahead_counts list plots only the two baselines.
+    """
     fids = sorted(results["fid"].unique())
     if not fids:
         raise ValueError("The result files do not contain any function IDs.")
+
+    if lookahead_counts is not None:
+        value_columns = [
+            "VBS",
+            *(f"Lookahead {count}" for count in dict.fromkeys(lookahead_counts)),
+            f"Static B{STATIC_BUDGET}",
+        ]
+        missing_columns = [column for column in value_columns if column not in results.columns]
+        if missing_columns:
+            raise ValueError(f"Requested plot columns not present in results: {missing_columns}")
+
+    if pio.kaleido.scope is not None:
+        pio.kaleido.scope.mathjax = None
 
     colours = [TAB20_COLOURS[index % len(TAB20_COLOURS)] for index in range(len(value_columns))]
     output_directory = RESULTS_DIR / metric / PLOT_DIR
     output_directory.mkdir(parents=True, exist_ok=True)
     rows = ceil(len(fids) / PLOT_COLUMNS)
-    subplot_titles = [f"Function f{fid} (n={sum(results['fid'] == fid)})" for fid in fids]
+    subplot_titles = [f"Function f{fid} (dim={DIM})" for fid in fids]
     subplot_titles.extend([""] * (rows * PLOT_COLUMNS - len(fids)))
     figure = make_subplots(
         rows=rows,
@@ -184,17 +207,189 @@ def plot_function_wise_boxplots(
         margin={"l": 80, "r": 50, "t": 110, "b": 50},
         showlegend=False,
     )
+    # Add considered lookaheads to filename
+    OUTPUT_FILENAME = f"function_wise_boxplots_{metric}_{','.join(str(l) for l in lookahead_counts)}.pdf"
     output_path = output_directory / OUTPUT_FILENAME
     save_figure_as_pdf(figure, output_path)
     return output_path
 
 
+def plot_run_wise_switching_regrets(
+    iids: list[int] | None = None,
+    *,
+    metric: str = "regret",
+    dim: int = DIM,
+    lookahead_counts: list[int] | None = None,
+    selector_directory: Path | None = None,
+    data_directory: Path | None = None,
+    output_directory: Path | None = None,
+) -> list[Path]:
+    """Save one PDF plot per (fid, iid, rep), without averaging.
+
+    ``iids=None`` includes all instances. ``data_directory`` points directly to
+    an achieved_regrets or achieved_aucs folder, matching ``metric``. Lines connect recorded a1_budget values;
+    Non-elitist's B1000 value is a horizontal no-switch reference.
+    Merged CSVs take precedence over their .part-* shards.
+
+    ``lookahead_counts=None`` overlays all available selector variants; []
+    disables overlays. ``selector_directory`` points to results/dim_N/metric.
+    Selector choices are matched by (fid, iid, rep), with algorithm-colored
+    switch lines and markers at their recorded achieved metric values.
+
+    Example: plot_run_wise_switching_regrets(iids=[1, 2], metric="auc", dim=40)
+    """
+    if metric not in {"regret", "auc"}:
+        raise ValueError('metric must be either "regret" or "auc".')
+    value_column = f"achieved_{metric}"
+    metric_label = "AUC" if metric == "auc" else "regret"
+    root = Path(__file__).resolve().parent
+    data_directory = (
+        Path(data_directory) if data_directory is not None
+        else root / "data" / f"dim_{dim}" / f"achieved_{metric}s"
+    )
+    output_directory = (
+        Path(output_directory) if output_directory is not None
+        else root / "plots" / f"dim_{dim}" / f"switching_{metric}s"
+    )
+    paths = sorted(data_directory.glob(f"achieved_{metric}s_*_{dim}D*.csv"))
+    paths = [
+        path for path in paths
+        if ".part-" not in path.name
+        or not path.with_name(path.name.split(".part-")[0] + ".csv").exists()
+    ]
+    if not paths:
+        raise FileNotFoundError(f"No achieved-{metric} CSVs found in {data_directory}")
+    columns = [*KEY_COLUMNS, "a1_budget", "algname", value_column]
+    frames = []
+    for path in paths:
+        frame = pd.read_csv(path, usecols=columns)
+        if iids is not None:
+            frame = frame.loc[frame["iid"].isin(iids)]
+        frames.append(frame)
+    results = pd.concat(frames, ignore_index=True).drop_duplicates()
+    if results.empty:
+        raise ValueError(f"No achieved-{metric} runs found for the requested iids.")
+    if iids is not None:
+        missing = sorted(set(iids) - set(results["iid"]))
+        if missing:
+            raise ValueError(f"Instance IDs not present in results: {missing}")
+    if results.duplicated([*KEY_COLUMNS, "algname", "a1_budget"]).any():
+        raise ValueError(f"Conflicting {metric} values for the same run, algorithm and budget.")
+
+    algorithms = ["Elitist", "PSO", "DE", "BFGS", "MLSL", "Non-elitist"]
+    algorithm_colours = {name: TAB20_COLOURS[2 * i] for i, name in enumerate(algorithms)}
+    selector_directory = (
+        Path(selector_directory) if selector_directory is not None
+        else root / "results" / f"dim_{dim}" / metric
+    )
+    available_paths = dict(lookahead_result_paths(selector_directory))
+    counts = sorted(available_paths) if lookahead_counts is None else list(dict.fromkeys(lookahead_counts))
+    missing_counts = [count for count in counts if count not in available_paths]
+    if missing_counts or (lookahead_counts is None and not available_paths):
+        raise FileNotFoundError(
+            f"No selector results for lookahead counts {missing_counts or 'any'} in {selector_directory}"
+        )
+    selector_results = {}
+    for count in counts:
+        choices = pd.read_csv(
+            available_paths[count],
+            usecols=[*KEY_COLUMNS, "switch_budget", "selected_algorithm", value_column],
+        )
+        if iids is not None:
+            choices = choices.loc[choices["iid"].isin(iids)]
+        if choices.duplicated(KEY_COLUMNS).any():
+            raise ValueError(f"Duplicate selector runs for lookahead {count}.")
+        if choices[["switch_budget", "selected_algorithm", value_column]].isna().any().any():
+            raise ValueError(f"Incomplete selector choices for lookahead {count}.")
+        unknown = set(choices["selected_algorithm"]) - set(algorithms)
+        if unknown:
+            raise ValueError(f"Unknown selected algorithms for lookahead {count}: {sorted(unknown)}")
+        selector_results[count] = choices.set_index(KEY_COLUMNS)
+
+    output_directory.mkdir(parents=True, exist_ok=True)
+    output_paths = []
+    runs = results.groupby(KEY_COLUMNS, sort=True)
+    for (fid, iid, rep), run in tqdm(
+        runs, total=runs.ngroups, desc="Saving run plots", unit="run"
+    ):
+        figure = go.Figure()
+        for index, algorithm in enumerate(algorithms):
+            values = run.loc[run["algname"] == algorithm].sort_values("a1_budget")
+            x = values["a1_budget"].tolist()
+            y = values[value_column].tolist()
+            baseline = algorithm == "Non-elitist" and x == [1000]
+            if baseline:
+                x, y = [0, 1000], [y[0], y[0]]
+            figure.add_trace(go.Scatter(
+                x=x, y=y, name=algorithm,
+                mode="lines" if baseline else "lines+markers",
+                line={"color": TAB20_COLOURS[2 * index],
+                      "dash": "dash" if baseline else "solid"},
+                connectgaps=False,
+                hovertemplate=(
+                    f"{algorithm}<br>Switching budget: %{{x}}"
+                    f"<br>Achieved {metric_label}: %{{y}}<extra></extra>"
+                ),
+            ))
+        for budget in sorted(run["a1_budget"].dropna().unique()):
+            figure.add_vline(
+                x=budget, line_width=1, line_color="rgba(0, 0, 0, 0.15)",
+                layer="below",
+            )
+        symbols = ["diamond", "square", "star", "triangle-up", "cross", "x"]
+        for index, count in enumerate(counts):
+            choices = selector_results[count]
+            if (fid, iid, rep) not in choices.index:
+                figure.add_trace(go.Scatter(
+                    x=[None], y=[None], mode="markers",
+                    marker={"color": "gray"},
+                    name=f"Lookahead {count}: no result", showlegend=True,
+                ))
+                continue
+            choice = choices.loc[(fid, iid, rep)]
+            budget = choice["switch_budget"]
+            algorithm = choice["selected_algorithm"]
+            colour = algorithm_colours[algorithm]
+            figure.add_vline(x=budget, line_color=colour, line_width=2, line_dash="dot")
+            figure.add_trace(go.Scatter(
+                x=[budget], y=[choice[value_column]], mode="markers",
+                name=f"Lookahead {count}: {algorithm}, B={budget:g}",
+                marker={"color": colour, "size": 14,
+                        "symbol": symbols[index % len(symbols)],
+                        "line": {"color": "black", "width": 1}},
+                hovertemplate=(
+                    f"Lookahead {count}: {algorithm}<br>Switching budget: %{{x}}"
+                    f"<br>Achieved {metric_label}: %{{y}}<extra></extra>"
+                ),
+            ))
+        figure.update_layout(
+            title=f"Achieved {metric_label} — f{fid}, iid {iid}, rep {rep} ({dim}D)",
+            xaxis={
+                "title": "Candidate switching budget", "range": [0, 1000],
+                "tickmode": "linear", "tick0": 0, "dtick": 100,
+                "showgrid": False,
+            },
+            yaxis={"title": f"Achieved {metric_label}", "type": "linear"},
+            legend_title_text="A2 algorithm",
+            template="plotly_white", width=1100, height=650,
+        )
+        output_path = output_directory / f"switching_{metric}_f{fid}_iid{iid}_rep{rep}.pdf"
+        figure.write_image(output_path, format="pdf", width=1100, height=650, scale=1)
+        output_paths.append(output_path)
+    return output_paths
+
+
 def main() -> None:
     if METRIC not in {"regret", "auc"}:
         raise ValueError('METRIC must be either "regret" or "auc".')
-    results, value_columns = load_plot_data(METRIC)
-    output_path = plot_function_wise_boxplots(results, value_columns, METRIC)
-    print(f"Saved function-wise boxplots to {output_path}")
+    # results, value_columns = load_plot_data(METRIC)
+    # output_path = plot_function_wise_boxplots(
+    #     results, value_columns, METRIC, lookahead_counts=LOOKAHEAD_COUNTS
+    # )
+    # print(f"Saved function-wise boxplots to {output_path}")
+    plot_run_wise_switching_regrets(
+        iids=[6,7], metric=METRIC, dim=DIM, lookahead_counts=LOOKAHEAD_COUNTS
+    )
 
 
 if __name__ == "__main__":
