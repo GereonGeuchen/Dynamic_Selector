@@ -16,7 +16,7 @@ from tqdm.auto import tqdm
 import plotly.io as pio
 
 # Change this to "auc" to plot the AUC results instead.
-METRIC = "auc"
+METRIC = "regret"
 DIM = 40
 # None includes all available values; otherwise use lists such as [1, 5, 10].
 LOOKAHEAD_COUNTS = [0,10,20]
@@ -129,7 +129,7 @@ def plot_function_wise_boxplots(
         pio.kaleido.scope.mathjax = None
 
     colours = [TAB20_COLOURS[index % len(TAB20_COLOURS)] for index in range(len(value_columns))]
-    output_directory = RESULTS_DIR / metric / PLOT_DIR
+    output_directory = RESULTS_DIR / metric / PLOT_DIR / "log_scale"
     output_directory.mkdir(parents=True, exist_ok=True)
     rows = ceil(len(fids) / PLOT_COLUMNS)
     subplot_titles = [f"Function f{fid} (dim={DIM})" for fid in fids]
@@ -369,7 +369,7 @@ def plot_run_wise_switching_regrets(
                 "tickmode": "linear", "tick0": 0, "dtick": 100,
                 "showgrid": False,
             },
-            yaxis={"title": f"Achieved {metric_label}", "type": "linear"},
+            yaxis={"title": f"Achieved {metric_label}", "type": "log"},
             legend_title_text="A2 algorithm",
             template="plotly_white", width=1100, height=650,
         )
