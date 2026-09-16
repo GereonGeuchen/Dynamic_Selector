@@ -6,17 +6,21 @@ This file contains the implementation of the data collection process. This inclu
 """
 
 # === First part: Running the optimisation algorithms and logging their evaluations ===
-from dataclasses import dataclass, fields
+from dataclasses import asdict, dataclass, fields
 import os
 import sys
 from pathlib import Path
 import pandas as pd
 import warnings
 
+
+
 import ioh
 from ioh import ProblemClass
 from modcma import ModularCMAES, Parameters
 import numpy as np
+
+# from many_affine import ManyAffine
 
 from sklearn.metrics import auc 
 
@@ -24,6 +28,7 @@ from pathlib import Path
 
 # Import the algorithms to be used in A2
 from optimisation_algorithms import BFGS, DE, MLSL, PSO
+from create_affine_functions import create_affine_function, generate_weights
 
 # Import ELA feature calculation functions
 from pflacco.classical_ela_features import (
@@ -37,8 +42,28 @@ from pflacco.classical_ela_features import (
 
 # Wrapper class for IOH problem to store evaluations in array for ELA calculation
 class IOHProblemWrapper:
-    def __init__(self, *args, **kwargs):
-        self.problem = ioh.get_problem(*args, **kwargs)
+    def __init__(self, *args, multi_affine=False, **kwargs):
+        """Wrap an IOH problem and retain its evaluated points.
+
+        Set ``multi_affine=True`` to create the ManyAffine realization for
+        ``(fid, iid, dimension)`` passed as the first three positional
+        arguments.  Otherwise this wrapper delegates unchanged to
+        :func:`ioh.get_problem`.
+        """
+        if multi_affine:
+            if len(args) < 3:
+                raise TypeError(
+                    "multi_affine=True requires fid, iid, and dimension as "
+                    "the first three positional arguments"
+                )
+
+            fid, iid, dimension = args[:3]
+            weights = generate_weights(fid, dimension)
+            self.problem = create_affine_function(
+                fid, iid, weights, n_variables=dimension
+            )
+        else:
+            self.problem = ioh.get_problem(*args, **kwargs)
         self.function_evals = {}
         self.best_so_far_evals = {}
         self.best_eval_so_far = np.inf
@@ -70,58 +95,70 @@ class TrackedParameters:
     rep: int = -1
     iid: int = -1
 
-#     # Time series features
-#     sigma: float = 0
-#     t: int = 0
-#     d_norm: float = 0
-#     d_mean: float = 0 
-#     ps_norm: float = 0
-#     ps_mean: float = 0
-#     pc_norm: float = 0
-#     pc_mean: float = 0
+    # Time series features
+    sigma: float = 0
+    t: int = 0
+    d_norm: float = 0
+    d_mean: float = 0 
+    ps_norm: float = 0
+    ps_mean: float = 0
+    pc_norm: float = 0
+    pc_mean: float = 0
     
-#     # Anja parameters:
-#     # ps_ratio: float = 0
-#     ps_squared: float = 0
-#     loglikelihood: float = 0
+    # Anja parameters:
+    # ps_ratio: float = 0
+    ps_squared: float = 0
+    loglikelihood: float = 0
     
-#     # check if this should only be one parameter
-#     mhl_norm: float = 0
-#     mhl_mean: float = 0
+    # check if this should only be one parameter
+    mhl_norm: float = 0
+    mhl_mean: float = 0
     
-#     def update(self, parameters: Parameters):
-#         self.sigma = parameters.sigma
-#         self.t = parameters.t
-#         for attr in ('D', 'ps', 'pc'):
-#             setattr(self, f'{attr}_norm'.lower(), np.linalg.norm(getattr(parameters, attr)))
-#             setattr(self, f'{attr}_mean'.lower(), np.mean(getattr(parameters, attr)))
+    def update(self, parameters: Parameters):
+        self.sigma = parameters.sigma
+        self.t = parameters.t
+        for attr in ('D', 'ps', 'pc'):
+            setattr(self, f'{attr}_norm'.lower(), np.linalg.norm(getattr(parameters, attr)))
+            setattr(self, f'{attr}_mean'.lower(), np.mean(getattr(parameters, attr)))
 
-#         self.ps_squared = np.sum(parameters.ps ** 2)
-#         # self.ps_ratio = np.sqrt(self.ps_squared) / parameters.chiN
+        self.ps_squared = np.sum(parameters.ps ** 2)
+        # self.ps_ratio = np.sqrt(self.ps_squared) / parameters.chiN
 
-#         sigma2 = self.sigma ** 2
+        sigma2 = self.sigma ** 2
         
-#         if hasattr(parameters.population, "x"):
-#             delta = parameters.population.x.T - parameters.m.T
-#             self.loglikelihood = -.5 * (parameters.lambda_ * (
-#                 parameters.d * np.log(2 * np.pi * sigma2) + np.log(np.prod(parameters.D) ** 2)) 
-#                 + np.diag(delta.dot(parameters.inv_root_C / sigma2).dot(delta.T)).sum()                
-#             )
-#         else:
-#             delta = np.zeros((5, parameters.d))
-#             self.loglikelihood = 0        
+        if hasattr(parameters.population, "x"):
+            delta = parameters.population.x.T - parameters.m.T
+            self.loglikelihood = -.5 * (parameters.lambda_ * (
+                parameters.d * np.log(2 * np.pi * sigma2) + np.log(np.prod(parameters.D) ** 2)) 
+                + np.diag(delta.dot(parameters.inv_root_C / sigma2).dot(delta.T)).sum()                
+            )
+        else:
+            delta = np.zeros((5, parameters.d))
+            self.loglikelihood = 0        
         
-#         mhl = np.sqrt(
-#             np.power(np.dot(parameters.B.T, delta.T) / parameters.D, 2).sum(axis=0)
-#         ) / self.sigma
-#         self.mhl_norm = np.linalg.norm(mhl)
-#         self.mhl_mean = mhl.mean()
+        mhl = np.sqrt(
+            np.power(np.dot(parameters.B.T, delta.T) / parameters.D, 2).sum(axis=0)
+        ) / self.sigma
+        self.mhl_norm = np.linalg.norm(mhl)
+        self.mhl_mean = mhl.mean()
 
-            
+@dataclass
+class TrackedParameters_switchAlgo:
+    """Metadata-only tracker used for switched and Elitist CMA-ES runs."""
+    rep: int = -1
+    iid: int = -1
+
+    def update(self, parameters: Parameters) -> None:
+        """Match the tracker interface without recording internal-state features."""
+        pass
+
 class TrackedCMAES(ModularCMAES):
-    def __init__(self, tracked_parameters = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, tracked_parameters=None, function=None, *args, **kwargs):
+        super().__init__(function, *args, **kwargs)
         self.tracked_parameters = tracked_parameters
+        self.function = function
+        self.iteration = 0
+        self.param_history = []
         # if self.tracked_parameters is not None:
         #     self.tracked_parameters.update(self.parameters)
         
@@ -135,16 +172,31 @@ class TrackedCMAES(ModularCMAES):
         # self.tracked_parameters.t = self.parameters.t
         # return not any(self.break_conditions)
         res = super().step()
-        # if self.tracked_parameters is not None:
-        #     self.tracked_parameters.update(self.parameters)
-        return res 
-            
+
+        self.iteration += 1
+
+        if self.tracked_parameters is not None:
+            self.tracked_parameters.update(self.parameters)
+
+            evaluations = self.function.state.evaluations
+            state = asdict(self.tracked_parameters)
+            state.update({
+                "iteration": self.iteration,
+                "evaluations": evaluations,
+            })
+
+            self.param_history.append(state)
+
+        return res
+                    
 class From_CMA_To_CMA():
-    def __init__(self, a1_budget, dim, A2, total_budget=1000):
+    def __init__(self, tracked_parameters, a1_budget, dim, A2, total_budget=1000):
         self.a1_budget = a1_budget
         self.dim = dim
         self.A2 = A2
         self.total_budget = total_budget
+        self.tracked_parameters = tracked_parameters
+        self.param_history = []
         
     def __call__(self, problem, A2, hparams = {}):
         if A2 == "Non-elitist":
@@ -153,7 +205,7 @@ class From_CMA_To_CMA():
             budget = self.a1_budget
             
         cma = TrackedCMAES(
-                    None, 
+                    self.tracked_parameters, 
                     problem, 
                     self.dim, 
                     budget= budget,
@@ -162,7 +214,10 @@ class From_CMA_To_CMA():
                     sigma0 = 2.0,
                     x0 = np.zeros((self.dim,1)),
                     elitist = False
-                ).run()
+                )
+        cma.run()
+
+        self.param_history = cma.param_history
         
         if A2 == "Non-elitist":
             return
@@ -174,14 +229,17 @@ class From_CMA_To_CMA():
         
         
 class Switched_From_CMA():
-    def __init__(self, a1_budget, dim, A2, total_budget=1000):
+    def __init__(self, tracked_parameters, a1_budget, dim, A2, total_budget=1000):
+        self.tracked_parameters = tracked_parameters
         self.a1_budget = a1_budget
         self.dim = dim
         self.A2 = A2
         self.total_budget = total_budget
         
     def __call__(self, problem, A2, hparams = {}):
-        
+
+
+        # Only track params for FROM_CMA_TO_CMA, as this is used in Non-elitist, B1000
         cma = TrackedCMAES(
                     None, 
                     problem, 
@@ -245,6 +303,7 @@ def safe_df_to_csv(folder_path, file_name, df, append=False):
         )
     else:
         df.to_csv(output_path, index=False)
+
 
 def get_ela_level_quantiles(budget):
     """
@@ -387,7 +446,7 @@ def calculate_ela_features(evaluations, fid, iid, rep, a1_budget, dim, algname):
 
 
 def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"],
-                 fids=range(1, 25), output_suffix=""):
+                 fids=range(1, 25), output_suffix="", use_ma=False):
     """
     This function runs the optimisation algorithms on the BBOB instances and logs
     their evaluations. It additionally computes ELA features every 50 evaluations
@@ -415,9 +474,15 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
     output_suffix : str, optional
         Suffix for output filenames, e.g. ".part-7".  Array tasks must use a
         distinct suffix and be merged after they all complete.
+
+    use_ma : bool, optional
+        If ``True``, evaluate the FID/IID pairs as ManyAffine functions.  The
+        default ``False`` uses the regular BBOB problems.
     """
+
+    ### === 
     trigger = ioh.logger.trigger.OnImprovement()
-    data_root = Path("data") / f"dim_{dim}"
+    data_root = Path("data") / (f"dim_{dim}_ma" if use_ma else f"dim_{dim}_test")
 
     for A2, algname in zip([DE, MLSL, PSO, BFGS, None, None], ["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]):
         if algname not in algs_to_run:
@@ -442,19 +507,34 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
         if os.path.exists(ela_output_path):
             os.remove(ela_output_path)
 
+        # Internal state can be large, so write one function's rows at a time.
+        # Remove an earlier result once, then append each function's chunk.
+        params_output_folder = data_root / "internal_state"
+        params_filename = f"internal_state_{algname}_B{a1_budget}_{dim}D{output_suffix}.csv"
+        params_output_path = params_output_folder / params_filename
+        if os.path.exists(params_output_path):
+            os.remove(params_output_path)
+
         logger = ioh.logger.Analyzer(
             triggers=[trigger],
             folder_name=str(data_root / "raw_evaluations" / f"{algname}_B{a1_budget}_{dim}D"),
             algorithm_name=algname,
             store_positions=True,
         )
-        tracked_parameters = TrackedParameters()
+        if algname == "Non-elitist":
+            tracked_parameters = TrackedParameters()
+        else:
+            tracked_parameters = TrackedParameters_switchAlgo()
+
         logger.watch(tracked_parameters, [x.name for x in fields(tracked_parameters)])
         for fid in fids:
             ela_features = []
+            fid_param_rows = []
             for iid in range(1, 8):
 
-                problem = IOHProblemWrapper(fid, iid, dim, ProblemClass.BBOB)
+                problem = IOHProblemWrapper(
+                    fid, iid, dim, ProblemClass.BBOB, multi_affine=use_ma
+                )
         
                 # Attach the logger to the problem
                 problem.attach_logger(logger)
@@ -466,10 +546,18 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
                     np.random.seed(rep)
                 
                     if algname in ["Elitist", "Non-elitist"]:
-                        alg = From_CMA_To_CMA(a1_budget, dim, algname, total_budget=1000)
+                        alg = From_CMA_To_CMA(tracked_parameters, a1_budget, dim, algname, total_budget=1000)
                         alg(problem, algname)
+
+                        # Add experiment metadata to every CMA-ES state snapshot
+                        # before collecting it for this algorithm's output CSV.
+                        for state in alg.param_history:
+                            state.update({
+                                "fid": fid
+                            })
+                        fid_param_rows.extend(alg.param_history)
                     else:
-                        alg = Switched_From_CMA(a1_budget, dim, A2, total_budget=1000)
+                        alg = Switched_From_CMA(tracked_parameters, a1_budget, dim, A2, total_budget=1000)
                         alg(problem, A2)
             
                     # Calculate ELA features every 50 evaluations and save to csv
@@ -482,6 +570,8 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
 
                             current_evaluations = {j: v for j, v in problem.function_evals.items() if j <= i}
                             ela_features.append(calculate_ela_features(current_evaluations, fid, iid, rep, a1_budget, dim, algname))
+
+                     
 
                     # The achieved regret of this specific run is the lowest objective value 
                     # that is within 1000 evals and within bounds
@@ -514,6 +604,25 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
                 if dim == 40:
                     df = df.drop(columns=["ela_meta.quad_simple.cond"], errors="ignore")
                 safe_df_to_csv(ela_output_folder, ela_filename, df, append=True)
+
+            if fid_param_rows and algname == "Non-elitist":
+                params_df = pd.DataFrame(fid_param_rows)
+                metadata_columns = [
+                    "fid", "iid", "rep", "iteration", "evaluations"
+                ]
+                feature_columns = [
+                    column for column in params_df.columns if column not in metadata_columns
+                ]
+                params_df = params_df[metadata_columns + feature_columns]
+                safe_df_to_csv(
+                    str(params_output_folder),
+                    params_filename,
+                    params_df,
+                    append=True,
+                )
+
+        # The internal-state rows have already been appended after each fid.
+        # This keeps memory usage bounded for long experiments.
 
         # Write this algorithm's results before moving to the next algorithm.
         regrets_df = pd.DataFrame(
@@ -548,7 +657,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 2:
         algorithms_to_run = sys.argv[2].split(",")
     else:
-        algorithms_to_run = ["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]
+        algorithms_to_run = ["Non-elitist"]
 
     if len(sys.argv) > 3:
         dimension = int(sys.argv[3])
@@ -565,10 +674,19 @@ if __name__ == "__main__":
     else:
         suffix = ""
 
+    if len(sys.argv) > 6:
+        use_ma_arg = sys.argv[6].strip().lower()
+        if use_ma_arg not in {"true", "false"}:
+            raise ValueError("use_ma must be 'true' or 'false'")
+        use_ma = use_ma_arg == "true"
+    else:
+        use_ma = False
+
     collect_data(
         a1_budget=a1_budget,
         dim=dimension,
         algs_to_run=algorithms_to_run,
         fids=function_ids,
         output_suffix=suffix,
+        use_ma=use_ma,
     )

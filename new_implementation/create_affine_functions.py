@@ -72,7 +72,8 @@ def main():
     if dimension > 2:
         fig.suptitle('x1/x2 slices; remaining coordinates fixed at each optimum')
     fig.tight_layout()
-    plt.show()
+    # Safe plot
+    plt.savefig('affine_functions.png', dpi=300)
 
 
 if __name__ == '__main__':
