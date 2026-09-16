@@ -2,7 +2,7 @@
 
 Set ``METRIC`` below to either ``"regret"`` or ``"auc"`` and run this file.
 For each FID, the plot contains one box for every evaluated number of
-lookahead models, plus the VBS and the static selection model at B=150.
+lookahead models, plus VBS, the configured static model, and Non-elitist.
 """
 
 from math import ceil
@@ -16,15 +16,27 @@ from tqdm.auto import tqdm
 import plotly.io as pio
 
 # Change this to "auc" to plot the AUC results instead.
-METRIC = "regret"
-DIM = 40
+METRIC = "auc"
+DIM = 5
 # None includes all available values; otherwise use lists such as [1, 5, 10].
 LOOKAHEAD_COUNTS = [0,10,20]
+MA = True
+# Use default-dataset models for MA results; False uses matching-dataset models.
+models_default = True
 
-RESULTS_DIR = Path("results") / f"dim_{DIM}"
-PLOT_DIR = Path("plots")
+
+def result_directory_name(dim: int, ma: bool, models_default: bool) -> str:
+    """Match the selector's dataset and model-dataset directory convention."""
+    directory = f"dim_{dim}_ma" if ma else f"dim_{dim}"
+    if ma and models_default:
+        directory += "_models_default"
+    return directory
+
+
+RESULTS_DIR = Path("results") / result_directory_name(DIM, MA, models_default)
+PLOT_DIR = Path(__file__).resolve().parent / "plots"
 STATIC_BUDGET = 150
-OUTPUT_FILENAME = "function_wise_lookahead_boxplots.pdf"
+OUTPUT_FILENAME = "function_wise_lookahead_boxplots_600_static.pdf"
 PLOT_COLUMNS = 4
 KEY_COLUMNS = ["fid", "iid", "rep"]
 TAB20_COLOURS = [
@@ -62,7 +74,7 @@ def load_plot_data(metric: str) -> tuple[pd.DataFrame, list[str]]:
 
     selector_frames = []
     baseline = None
-    required_columns = [*KEY_COLUMNS, achieved_column, vbs_column, static_column]
+    required_columns = [*KEY_COLUMNS, achieved_column, vbs_column, static_column, "no_switch"]
 
     for lookahead_count, result_path in result_paths:
         results = pd.read_csv(result_path)
@@ -78,6 +90,7 @@ def load_plot_data(metric: str) -> tuple[pd.DataFrame, list[str]]:
             baseline = results.loc[:, [*KEY_COLUMNS, vbs_column, static_column]].rename(
                 columns={vbs_column: "VBS", static_column: f"Static B{STATIC_BUDGET}"}
             )
+            baseline["Non-elitist"] = results["no_switch"]
 
     assert baseline is not None
     plot_data = baseline
@@ -89,7 +102,7 @@ def load_plot_data(metric: str) -> tuple[pd.DataFrame, list[str]]:
 
     plot_data.to_csv(metric_dir / "selector_results_merged.csv", index=False)
 
-    return plot_data, ["VBS", *lookahead_labels, f"Static B{STATIC_BUDGET}"]
+    return plot_data, ["VBS", *lookahead_labels, f"Static B{STATIC_BUDGET}", "Non-elitist"]
 
 
 def save_figure_as_pdf(figure: go.Figure, output_path: Path) -> None:
@@ -106,10 +119,10 @@ def plot_function_wise_boxplots(
     results: pd.DataFrame, value_columns: list[str], metric: str,
     lookahead_counts: list[int] | None = None,
 ) -> Path:
-    """Plot selected lookahead counts for every FID, retaining VBS and static B150.
+    """Plot selected lookahead counts for every FID with all three baselines.
 
     None selects all available values. Explicit lists preserve their order;
-    an empty lookahead_counts list plots only the two baselines.
+    an empty lookahead_counts list plots only the three baselines.
     """
     fids = sorted(results["fid"].unique())
     if not fids:
@@ -120,6 +133,7 @@ def plot_function_wise_boxplots(
             "VBS",
             *(f"Lookahead {count}" for count in dict.fromkeys(lookahead_counts)),
             f"Static B{STATIC_BUDGET}",
+            "Non-elitist",
         ]
         missing_columns = [column for column in value_columns if column not in results.columns]
         if missing_columns:
@@ -129,7 +143,8 @@ def plot_function_wise_boxplots(
         pio.kaleido.scope.mathjax = None
 
     colours = [TAB20_COLOURS[index % len(TAB20_COLOURS)] for index in range(len(value_columns))]
-    output_directory = RESULTS_DIR / metric / PLOT_DIR / "log_scale"
+    dimension_directory = result_directory_name(DIM, MA, models_default)
+    output_directory = PLOT_DIR / dimension_directory / metric / "log_scale_boxplots"
     output_directory.mkdir(parents=True, exist_ok=True)
     rows = ceil(len(fids) / PLOT_COLUMNS)
     subplot_titles = [f"Function f{fid} (dim={DIM})" for fid in fids]
@@ -243,13 +258,15 @@ def plot_run_wise_switching_regrets(
     value_column = f"achieved_{metric}"
     metric_label = "AUC" if metric == "auc" else "regret"
     root = Path(__file__).resolve().parent
+    dimension_directory = f"dim_{dim}_ma" if MA else f"dim_{dim}"
+    result_directory = result_directory_name(dim, MA, models_default)
     data_directory = (
         Path(data_directory) if data_directory is not None
-        else root / "data" / f"dim_{dim}" / f"achieved_{metric}s"
+        else root / "data" / dimension_directory / f"achieved_{metric}s"
     )
     output_directory = (
         Path(output_directory) if output_directory is not None
-        else root / "plots" / f"dim_{dim}" / f"switching_{metric}s"
+        else PLOT_DIR / result_directory / f"switching_{metric}s"
     )
     paths = sorted(data_directory.glob(f"achieved_{metric}s_*_{dim}D*.csv"))
     paths = [
@@ -280,7 +297,7 @@ def plot_run_wise_switching_regrets(
     algorithm_colours = {name: TAB20_COLOURS[2 * i] for i, name in enumerate(algorithms)}
     selector_directory = (
         Path(selector_directory) if selector_directory is not None
-        else root / "results" / f"dim_{dim}" / metric
+        else root / "results" / result_directory / metric
     )
     available_paths = dict(lookahead_result_paths(selector_directory))
     counts = sorted(available_paths) if lookahead_counts is None else list(dict.fromkeys(lookahead_counts))
@@ -379,17 +396,121 @@ def plot_run_wise_switching_regrets(
     return output_paths
 
 
+def plot_a2_distribution_and_switching(
+    lookahead_counts: list[int] | None = None,
+    *,
+    metric: str | None = None,
+    dim: int | None = None,
+    iids: list[int] | None = None,
+) -> list[Path]:
+    """Save A2 proportions and switching-budget boxes per function/lookahead.
+
+    Defaults use the current METRIC, DIM, MA and models_default settings.
+    None selects all available lookaheads; [] produces no plots. All instances
+    and repetitions are pooled per function unless ``iids`` filters instances.
+    Budgets are shown as recorded, including Non-elitist selections.
+
+    Example: plot_a2_distribution_and_switching(LOOKAHEAD_COUNTS)
+    """
+    metric = METRIC if metric is None else metric
+    dim = DIM if dim is None else dim
+    if metric not in {"auc", "regret"}:
+        raise ValueError('metric must be either "regret" or "auc".')
+    root = Path(__file__).resolve().parent
+    directory = result_directory_name(dim, MA, models_default)
+    metric_directory = root / "results" / directory / metric
+    available = dict(lookahead_result_paths(metric_directory))
+    counts = sorted(available) if lookahead_counts is None else list(dict.fromkeys(lookahead_counts))
+    missing = [count for count in counts if count not in available]
+    if missing or (lookahead_counts is None and not available):
+        raise FileNotFoundError(
+            f"No selector results for lookahead counts {missing or 'any'} in {metric_directory}"
+        )
+    output_directory = PLOT_DIR / directory / metric / "a2_distribution_and_switching"
+    colours = {
+        "BFGS": "#1f77b4", "Non-elitist": "#ff7f0e", "DE": "#2ca02c",
+        "PSO": "#d62728", "MLSL": "#9467bd", "Elitist": "#8c564b",
+    }
+    display_names = {
+        "Elitist": "CMA-ES, elitist", "Non-elitist": "CMA-ES, non-elitist",
+    }
+    output_paths = []
+    for count in counts:
+        results = pd.read_csv(
+            available[count], usecols=[*KEY_COLUMNS, "selected_algorithm", "switch_budget"]
+        )
+        if iids is not None:
+            results = results.loc[results["iid"].isin(iids)]
+        if results.empty:
+            raise ValueError(f"No selector runs for lookahead {count} and requested instances.")
+        if results.isna().any().any() or results.duplicated(KEY_COLUMNS).any():
+            raise ValueError(f"Incomplete or duplicate selector runs for lookahead {count}.")
+        unknown = set(results["selected_algorithm"]) - set(colours)
+        if unknown:
+            raise ValueError(f"Unknown selected algorithms: {sorted(unknown)}")
+        results["switch_budget"] = pd.to_numeric(results["switch_budget"], errors="raise")
+        fids = sorted(results["fid"].unique())
+        frequencies = pd.crosstab(results["fid"], results["selected_algorithm"])
+        proportions = frequencies.div(frequencies.sum(axis=1), axis=0).reindex(fids)
+        figure = make_subplots(
+            rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.13,
+            subplot_titles=["A2 algorithm distribution", "Recorded switching budget"],
+        )
+        for algorithm, colour in colours.items():
+            if algorithm not in proportions.columns:
+                continue
+            figure.add_trace(go.Bar(
+                x=fids, y=proportions[algorithm],
+                name=display_names.get(algorithm, algorithm), marker_color=colour,
+                width=0.86,
+                hovertemplate="f%{x}<br>Proportion: %{y:.1%}<extra>%{fullData.name}</extra>",
+            ), row=1, col=1)
+        for fid in fids:
+            budgets = results.loc[results["fid"] == fid, "switch_budget"]
+            figure.add_trace(go.Box(
+                x=[fid] * len(budgets), y=budgets, name=f"f{fid}",
+                boxpoints=False, width=0.55, fillcolor="royalblue",
+                line={"color": "black", "width": 1.5}, showlegend=False,
+            ), row=2, col=1)
+        figure.update_xaxes(
+            tickmode="array", tickvals=fids, range=[min(fids) - 0.5, max(fids) + 0.5],
+            showticklabels=True, showline=True, linecolor="black", zeroline=False,
+        )
+        figure.update_xaxes(title_text="BBOB function", row=2, col=1)
+        figure.update_yaxes(title_text="Proportion", range=[0, 1], tickformat=".0%", row=1, col=1)
+        figure.update_yaxes(title_text="Switching budget", rangemode="tozero", row=2, col=1)
+        figure.update_layout(
+            title=f"{metric.upper()} — {directory}, lookahead {count}",
+            barmode="stack", template="plotly_white", width=1200, height=800,
+            font={"size": 14}, margin={"l": 80, "r": 30, "t": 130, "b": 60},
+            legend={"orientation": "h", "x": 0.5, "xanchor": "center", "y": 1.14},
+        )
+        instance_suffix = "" if iids is None else "_iids_" + "-".join(map(str, sorted(set(iids))))
+        output_directory.mkdir(parents=True, exist_ok=True)
+        output_path = output_directory / f"a2_distribution_and_switching_lookahead_{count}{instance_suffix}.pdf"
+        figure.write_image(output_path, format="pdf", width=1200, height=800, scale=1)
+        output_paths.append(output_path)
+    return output_paths
+
+
 def main() -> None:
-    if METRIC not in {"regret", "auc"}:
-        raise ValueError('METRIC must be either "regret" or "auc".')
-    # results, value_columns = load_plot_data(METRIC)
-    # output_path = plot_function_wise_boxplots(
-    #     results, value_columns, METRIC, lookahead_counts=LOOKAHEAD_COUNTS
-    # )
-    # print(f"Saved function-wise boxplots to {output_path}")
-    plot_run_wise_switching_regrets(
-        iids=[6,7], metric=METRIC, dim=DIM, lookahead_counts=LOOKAHEAD_COUNTS
-    )
+    global METRIC, DIM, MA, models_default, RESULTS_DIR
+
+    for DIM in [5, 40]:
+        for MA in [False, True]:
+            for models_default in ([False, True] if MA else [False]):
+                RESULTS_DIR = Path("results") / result_directory_name(DIM, MA, models_default)
+                for METRIC in ["auc", "regret"]:
+                    # results, value_columns = load_plot_data(METRIC)
+                    # output_path = plot_function_wise_boxplots(
+                    #     results,
+                    #     value_columns,
+                    #     METRIC,
+                    #     lookahead_counts=LOOKAHEAD_COUNTS,
+                    # )
+                    # print(f"Saved function-wise boxplots to {output_path}")
+                    for output_path in plot_a2_distribution_and_switching(LOOKAHEAD_COUNTS):
+                        print(f"Saved A2 distribution and switching plots to {output_path}")
 
 
 if __name__ == "__main__":
