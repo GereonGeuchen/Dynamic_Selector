@@ -18,7 +18,7 @@ from sklearn.preprocessing import MinMaxScaler
 TOTAL_BUDGET = 1000
 BUDGET_STEP = 50
 DIM = 40
-METRIC = "auc"
+METRIC = "regret"
 
 METRIC_COLUMN = f"achieved_{METRIC}"
 ACTUAL_METRIC_COLUMN = f"actual_{METRIC}"
@@ -46,6 +46,21 @@ SWITCHING_TRAINING_DATA_FOLDER = "switching_model_training_data"
 LOOKAHEAD_TRAINING_DATA_FOLDER = "lookahead_model_training_data"
 SWITCHING_MODELS_FOLDER = "switching_models"
 
+
+def configure_experiment(dimension: int, metric: str) -> None:
+    """Configure the dimension and metric used by all path and column helpers."""
+    if dimension <= 0:
+        raise ValueError("dimension must be positive")
+
+    global DIM, METRIC, METRIC_COLUMN, ACTUAL_METRIC_COLUMN
+    global PREDICTED_METRIC_COLUMN, VBS_METRIC_COLUMN
+    DIM = dimension
+    METRIC = metric
+    METRIC_COLUMN = f"achieved_{METRIC}"
+    ACTUAL_METRIC_COLUMN = f"actual_{METRIC}"
+    PREDICTED_METRIC_COLUMN = f"predicted_{METRIC}"
+    VBS_METRIC_COLUMN = f"vbs_{METRIC}"
+
 def metric_scoped_path(base_path: str) -> str:
     """Return a metric-specific subdirectory under a base path, e.g. ./data/regret."""
     normalized = os.path.normpath(base_path)
@@ -54,9 +69,25 @@ def metric_scoped_path(base_path: str) -> str:
     return os.path.join(base_path, METRIC)
 
 
-def dimension_scoped_path(base_path: str) -> str:
-    """Return the dimension-specific experiment directory under a base path."""
-    dimension_directory = f"dim_{DIM}"
+def dimension_directory_name(dataset: str = "default") -> str:
+    """Return the directory name used for one collected dataset."""
+    if dataset not in {"default", "ma"}:
+        raise ValueError(f"Unknown dataset {dataset!r}; expected 'default' or 'ma'.")
+    return f"dim_{DIM}_ma" if dataset == "ma" else f"dim_{DIM}"
+
+
+def result_directory_name(dataset: str) -> str:
+    """Return the standard result directory name for one dataset."""
+    return dimension_directory_name(dataset)
+
+
+def dimension_scoped_path(base_path: str, dataset: str = "default") -> str:
+    """Return the dimension- and dataset-specific experiment directory.
+
+    ``dataset="ma"`` uses the MA collection (``dim_<DIM>_ma``); the default
+    preserves the original ``dim_<DIM>`` layout.
+    """
+    dimension_directory = dimension_directory_name(dataset)
     normalized = os.path.normpath(base_path)
     if os.path.basename(normalized) == dimension_directory:
         return normalized
@@ -765,7 +796,7 @@ def create_lookahead_model_data(selection_model_training_data: dict[int, pd.Data
     return lookahead_model_training_data
 
 class DynamicSelector:
-    def __init__(self, switching_budgets: list = SWITCHING_BUDGETS, data_path: str = "./data", results_path: str = "./results", model_path: str = "./models", load_models: bool = False):
+    def __init__(self, switching_budgets: list = SWITCHING_BUDGETS, data_path: str = "./data", results_path: str = "./results", model_path: str = "./models", load_models: bool = False, dataset: str = "default", model_dataset: str | None = None):
         """
         Initializes the DynamicSelector.
 
@@ -781,13 +812,25 @@ class DynamicSelector:
             The folder structure must be the same as the one created by train_models
         load_models: bool, optional
             Whether to load the trained models from model_path. If False, the models will be initialized as None and need to be trained using train_models before evaluation. Default is False.
+        dataset: {"default", "ma"}, optional
+            Dataset collection to evaluate or train on. ``"ma"`` reads from
+            ``dim_<DIM>_ma``.
+        model_dataset: {"default", "ma"}, optional
+            Dataset collection the loaded models were trained on. If omitted,
+            it is the same as ``dataset``. When it differs, results are stored
+            under ``dim_<DIM>_<dataset>_models_<model_dataset>``.
         """
-        self.results_path = metric_scoped_path(dimension_scoped_path(results_path))
+        if model_dataset is None:
+            model_dataset = dataset
+        result_directory = result_directory_name(dataset)
+        if model_dataset != dataset:
+            result_directory = f"{result_directory}_models_{model_dataset}"
+        self.results_path = metric_scoped_path(os.path.join(results_path, result_directory))
         self.switching_budgets = list(switching_budgets)
-        self.raw_data_path = dimension_scoped_path(data_path)
-        self.data_path = metric_scoped_path(data_path)
+        self.raw_data_path = dimension_scoped_path(data_path, dataset)
+        # self.data_path = metric_scoped_path(data_path)
         self.data_path = metric_scoped_path(self.raw_data_path)
-        self.model_path = metric_scoped_path(dimension_scoped_path(model_path))
+        self.model_path = metric_scoped_path(dimension_scoped_path(model_path, model_dataset))
         
         if load_models:
             self.models = self.load_models_from_folder()
@@ -1156,8 +1199,8 @@ class DynamicSelector:
 
                     result_df.to_csv(output_path, mode="a", header=not os.path.exists(output_path), index=False)
 
-def build_switching_training_data_from_stored_tables(data_path: str) -> None:
-    raw_data_path = dimension_scoped_path(data_path)
+def build_switching_training_data_from_stored_tables(data_path: str, dataset: str = "default") -> None:
+    raw_data_path = dimension_scoped_path(data_path, dataset)
     data_path = metric_scoped_path(raw_data_path)
     selection_model_training_data = {}
     lookahead_model_training_data = {}
@@ -1213,9 +1256,30 @@ def parse_args() -> argparse.Namespace:
         default="build-switch-data",
         help="Workflow to run. The default preserves the historical script behavior.",
     )
-    parser.add_argument("--data-path", default="./data", help=f"Base data directory. Dimension {DIM} uses <data-path>/dim_{DIM}; selector tables are stored below its {METRIC} subdirectory.")
-    parser.add_argument("--results-path", default="./results", help=f"Base results directory. Dimension {DIM} outputs are written under <results-path>/dim_{DIM}/{METRIC}.")
-    parser.add_argument("--model-path", default="./models", help=f"Base model directory. Dimension {DIM} models are saved/loaded under <model-path>/dim_{DIM}/{METRIC}.")
+    parser.add_argument(
+        "--dimension",
+        type=int,
+        default=DIM,
+        help="Problem dimension; selects dim_<dimension> or dim_<dimension>_ma directories.",
+    )
+    parser.add_argument(
+        "--metric",
+        choices=["regret", "auc"],
+        default=METRIC,
+        help="Performance metric used for training data, models, and results.",
+    )
+    parser.add_argument(
+        "--dataset",
+        choices=["default", "ma"],
+        default="default",
+        help="Dataset collection to train on or evaluate; 'ma' uses dim_<DIM>_ma.",
+    )
+    parser.add_argument(
+        "--model-dataset",
+        choices=["default", "ma"],
+        help=("Dataset collection used to train the models to load. Defaults to --dataset. "
+              "If it differs, results use a _models_<dataset> suffix."),
+    )
     parser.add_argument(
         "--lookahead-count",
         type=int,
@@ -1236,28 +1300,27 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    configure_experiment(args.dimension, args.metric)
 
     if args.mode == "build-switch-data":
-        build_switching_training_data_from_stored_tables(args.data_path)
+        build_switching_training_data_from_stored_tables("./data", args.dataset)
         return
 
     if args.mode == "evaluate":
         if args.lookahead_count is None:
             raise ValueError("--lookahead-count is required when --mode evaluate")
         selector = DynamicSelector(
-            data_path=args.data_path,
-            results_path=args.results_path,
-            model_path=args.model_path,
             load_models=True,
+            dataset=args.dataset,
+            model_dataset=args.model_dataset,
         )
         selector.evaluate(args.lookahead_count)
         return
 
     selector = DynamicSelector(
-        data_path=args.data_path,
-        results_path=args.results_path,
-        model_path=args.model_path,
         load_models=False,
+        dataset=args.dataset,
+        model_dataset=args.model_dataset,
     )
     selector.train_models(
         training_data_is_stored=args.training_data_is_stored,
