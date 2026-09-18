@@ -445,8 +445,124 @@ def calculate_ela_features(evaluations, fid, iid, rep, a1_budget, dim, algname):
     return features
 
 
-def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"],
-                 fids=range(1, 25), output_suffix="", use_ma=False):
+ALGORITHM_SPECS = (
+    (DE, "DE"),
+    (MLSL, "MLSL"),
+    (PSO, "PSO"),
+    (BFGS, "BFGS"),
+    (None, "Non-elitist"),
+    (None, "Elitist"),
+)
+DEFAULT_ALGORITHMS = tuple(name for _, name in ALGORITHM_SPECS)
+
+
+def _collection_root(dim, use_ma, standalone):
+    """Return the root directory for one collection mode."""
+    if standalone:
+        suffix = "ma_standalone" if use_ma else "standalone"
+    else:
+        suffix = "ma" if use_ma else "test"
+    return Path("data") / f"dim_{dim}_{suffix}"
+
+
+def _run_standalone_algorithm(problem, algorithm_class, algname, dim, budget,
+                              tracked_parameters):
+    """Run one algorithm directly, without passing any A1 state."""
+    if algname in {"Elitist", "Non-elitist"}:
+        TrackedCMAES(
+            tracked_parameters, problem, dim, budget=budget, active=True,
+            bound_correction="saturate", sigma0=2.0,
+            x0=np.zeros((dim, 1)), elitist=(algname == "Elitist"),
+        ).run()
+        return []
+
+    algorithm = algorithm_class(problem, verbose=False, seed=np.random.get_state())
+    algorithm.set_params({"budget": budget})
+    algorithm.set_stopping_criteria(
+        lambda: problem.state.evaluations >= budget
+    )
+    algorithm.run()
+    return []
+
+
+def _run_switched_algorithm(problem, algorithm_class, algname, a1_budget, dim,
+                            total_budget, tracked_parameters):
+    """Run the original A1-to-A2 experiment and return CMA state snapshots."""
+    if algname in {"Elitist", "Non-elitist"}:
+        algorithm = From_CMA_To_CMA(
+            tracked_parameters, a1_budget, dim, algname, total_budget=total_budget
+        )
+        algorithm(problem, algname)
+        return algorithm.param_history
+
+    algorithm = Switched_From_CMA(
+        tracked_parameters, a1_budget, dim, algorithm_class,
+        total_budget=total_budget,
+    )
+    algorithm(problem, algorithm_class)
+    return []
+
+
+def _record_performance(problem, fid, iid, rep, budget_label, algname,
+                        total_budget, achieved_regrets, achieved_aucs):
+    """Append the final regret and convergence-curve AUC of one run."""
+    bounded_evaluations = {
+        evaluation: value
+        for evaluation, value in problem.function_evals.items()
+        if evaluation <= total_budget and np.all(np.abs(value[0]) <= 5)
+    }
+    if bounded_evaluations:
+        best_value = min(bounded_evaluations.values(), key=lambda value: value[1])
+        achieved_regrets[(fid, iid, rep, budget_label, algname)] = (
+            best_value[1] - problem.optimum.y
+        )
+
+    convergence = {
+        evaluation: value
+        for evaluation, value in problem.best_so_far_evals.items()
+        if evaluation <= total_budget
+    }
+    if convergence:
+        items = sorted(convergence.items())
+        x_values = [evaluation for evaluation, _ in items]
+        y_values = [value[1] - problem.optimum.y for _, value in items]
+        achieved_aucs[(fid, iid, rep, budget_label, algname)] = auc(x_values, y_values)
+
+
+def _write_performance_metrics(data_root, algname, run_tag, dim, output_suffix,
+                               achieved_regrets, achieved_aucs):
+    """Persist one algorithm's performance tables with the historical schema."""
+    metric_columns = ["fid", "iid", "rep", "a1_budget", "algname"]
+    regrets_df = pd.DataFrame(
+        [
+            dict(zip(metric_columns, key), achieved_regret=value)
+            for key, value in achieved_regrets.items()
+        ],
+        columns=[*metric_columns, "achieved_regret"],
+    )
+    aucs_df = pd.DataFrame(
+        [
+            dict(zip(metric_columns, key), achieved_auc=value)
+            for key, value in achieved_aucs.items()
+        ],
+        columns=[*metric_columns, "achieved_auc"],
+    )
+    safe_df_to_csv(
+        str(data_root / "achieved_regrets"),
+        f"achieved_regrets_{algname}_{run_tag}_{dim}D{output_suffix}.csv",
+        regrets_df,
+    )
+    safe_df_to_csv(
+        str(data_root / "achieved_aucs"),
+        f"achieved_aucs_{algname}_{run_tag}_{dim}D{output_suffix}.csv",
+        aucs_df,
+    )
+
+
+def collect_data(a1_budget, dim, algs_to_run=None,
+                 fids=range(1, 25), output_suffix="", use_ma=False,
+                 standalone=False, iids=None, repetitions=20,
+                 total_budget=1000):
     """
     This function runs the optimisation algorithms on the BBOB instances and logs
     their evaluations. It additionally computes ELA features every 50 evaluations
@@ -478,50 +594,78 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
     use_ma : bool, optional
         If ``True``, evaluate the FID/IID pairs as ManyAffine functions.  The
         default ``False`` uses the regular BBOB problems.
+
+    standalone : bool, optional
+        If ``True``, run every algorithm directly from its own native initial
+        state.  No A1 CMA-ES run is performed and ``a1_budget`` is recorded as
+        zero in the metric files.  The default preserves the switched-run
+        collection used by the dynamic selector.
+
+    iids : iterable of int, optional
+        Instance IDs to process.  For example, ``range(6, 8)`` runs only
+        instances 6 and 7.  If omitted, standalone collection uses instances
+        6 and 7; switched collection retains its historical instances 1--7.
+
+    repetitions : int, optional
+        Number of independent runs for each ``(fid, iid, algorithm)``.
+
+    total_budget : int, optional
+        Evaluation budget for a complete run.  This is the standalone budget;
+        in switched mode it remains the total A1+A2 budget.
     """
 
     ### === 
     trigger = ioh.logger.trigger.OnImprovement()
-    data_root = Path("data") / (f"dim_{dim}_ma" if use_ma else f"dim_{dim}_test")
+    algs_to_run = DEFAULT_ALGORITHMS if algs_to_run is None else algs_to_run
+    data_root = _collection_root(dim, use_ma, standalone)
+    if iids is None:
+        iids = range(1, 8)
 
-    for A2, algname in zip([DE, MLSL, PSO, BFGS, None, None], ["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]):
+    for algorithm_class, algname in ALGORITHM_SPECS:
         if algname not in algs_to_run:
             continue
 
-        # We only need to record Non-elitist iff A1_budget is 1000 to avoid redundancy
-        if algname == "Non-elitist" and a1_budget != 1000:
-            continue
-        if algname != "Non-elitist" and a1_budget == 1000:
-            continue
+        if not standalone:
+            # We only need to record Non-elitist iff A1_budget is 1000 to avoid redundancy
+            if algname == "Non-elitist" and a1_budget != total_budget:
+                continue
+            if algname != "Non-elitist" and a1_budget == total_budget:
+                continue
+
+        # A zero switch budget explicitly denotes a run with no A1 phase,
+        # while retaining the established metrics schema.
+        metric_budget = 0 if standalone else a1_budget
+        run_tag = "B0" if standalone else f"B{a1_budget}"
 
         # Keep performance results local to this algorithm so its output files
         # can never contain rows produced by another algorithm.
         achieved_regrets = {}
         achieved_aucs = {}
 
-        # ELA rows are written once per function below. Remove a previous run's
-        # file once here, then append only the chunks produced by this run.
-        ela_output_folder = data_root / "ela_features" / f"{algname}_B{a1_budget}_{dim}D"
-        ela_filename = f"ELA_features{output_suffix}.csv"
-        ela_output_path = ela_output_folder / ela_filename
-        if os.path.exists(ela_output_path):
-            os.remove(ela_output_path)
+        if not standalone:
+            # ELA rows are written once per function below. Remove a previous
+            # run's file once here, then append only this run's chunks.
+            ela_output_folder = data_root / "ela_features" / f"{algname}_{run_tag}_{dim}D"
+            ela_filename = f"ELA_features{output_suffix}.csv"
+            ela_output_path = ela_output_folder / ela_filename
+            if os.path.exists(ela_output_path):
+                os.remove(ela_output_path)
 
-        # Internal state can be large, so write one function's rows at a time.
-        # Remove an earlier result once, then append each function's chunk.
-        params_output_folder = data_root / "internal_state"
-        params_filename = f"internal_state_{algname}_B{a1_budget}_{dim}D{output_suffix}.csv"
-        params_output_path = params_output_folder / params_filename
-        if os.path.exists(params_output_path):
-            os.remove(params_output_path)
+            # Internal state can be large, so write one function's rows at a
+            # time.  Standalone baselines deliberately do not collect it.
+            params_output_folder = data_root / "internal_state"
+            params_filename = f"internal_state_{algname}_{run_tag}_{dim}D{output_suffix}.csv"
+            params_output_path = params_output_folder / params_filename
+            if os.path.exists(params_output_path):
+                os.remove(params_output_path)
 
         logger = ioh.logger.Analyzer(
             triggers=[trigger],
-            folder_name=str(data_root / "raw_evaluations" / f"{algname}_B{a1_budget}_{dim}D"),
+            folder_name=str(data_root / "raw_evaluations" / f"{algname}_{run_tag}_{dim}D"),
             algorithm_name=algname,
             store_positions=True,
         )
-        if algname == "Non-elitist":
+        if algname == "Non-elitist" and not standalone:
             tracked_parameters = TrackedParameters()
         else:
             tracked_parameters = TrackedParameters_switchAlgo()
@@ -530,7 +674,7 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
         for fid in fids:
             ela_features = []
             fid_param_rows = []
-            for iid in range(1, 8):
+            for iid in iids:
 
                 problem = IOHProblemWrapper(
                     fid, iid, dim, ProblemClass.BBOB, multi_affine=use_ma
@@ -539,31 +683,33 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
                 # Attach the logger to the problem
                 problem.attach_logger(logger)
 
-                for rep in range(20):
+                for rep in range(repetitions):
                     tracked_parameters.rep = rep
                     tracked_parameters.iid = iid
-                    print(f"Running function {fid} instance {iid} repetition {rep} with A2 {algname}, budget {a1_budget}")
+                    mode = "standalone" if standalone else "with A1/A2 switch"
+                    print(f"Running {mode}: function {fid} instance {iid} repetition {rep}, algorithm {algname}, budget {total_budget}")
                     np.random.seed(rep)
-                
-                    if algname in ["Elitist", "Non-elitist"]:
-                        alg = From_CMA_To_CMA(tracked_parameters, a1_budget, dim, algname, total_budget=1000)
-                        alg(problem, algname)
 
-                        # Add experiment metadata to every CMA-ES state snapshot
-                        # before collecting it for this algorithm's output CSV.
-                        for state in alg.param_history:
-                            state.update({
-                                "fid": fid
-                            })
-                        fid_param_rows.extend(alg.param_history)
+                    if standalone:
+                        parameter_history = _run_standalone_algorithm(
+                            problem, algorithm_class, algname, dim, total_budget,
+                            tracked_parameters,
+                        )
                     else:
-                        alg = Switched_From_CMA(tracked_parameters, a1_budget, dim, A2, total_budget=1000)
-                        alg(problem, A2)
+                        parameter_history = _run_switched_algorithm(
+                            problem, algorithm_class, algname, a1_budget, dim,
+                            total_budget, tracked_parameters,
+                        )
+
+                    # Only switched non-elitist CMA-ES produces internal state.
+                    for state in parameter_history:
+                        state["fid"] = fid
+                    fid_param_rows.extend(parameter_history)
             
                     # Calculate ELA features every 50 evaluations and save to csv
                     # === Only do it for Non-elitist
-                    if algname == "Non-elitist":
-                        for i in range(50, 1001, 50):
+                    if algname == "Non-elitist" and not standalone:
+                        for i in range(50, total_budget + 1, 50):
                             # If the algorithm is not Non-elitist, we only calculate features if budget > A1_budget to avoid redundancy
                             if algname != "Non-elitist" and i <= a1_budget:
                                 continue
@@ -573,26 +719,10 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
 
                      
 
-                    # The achieved regret of this specific run is the lowest objective value 
-                    # that is within 1000 evals and within bounds
-                    evals_to_consider_for_regret = {i: v for i, v in problem.function_evals.items() if i <= 1000 and np.all(np.abs(v[0]) <= 5)}
-                    if evals_to_consider_for_regret:
-                        best_eval = min(evals_to_consider_for_regret.values(), key=lambda x: x[1])
-                        achieved_regrets[(fid, iid, rep, a1_budget, algname)] = best_eval[1] - problem.optimum.y
-
-                    # The auc of the convergence curve
-                    evals_to_consider_for_auc = {i: v for i, v in problem.best_so_far_evals.items() if i <= 1000}
-                    if evals_to_consider_for_auc:
-                        items = sorted(evals_to_consider_for_auc.items())
-
-                        x = [k for k, _ in items]
-                        y = [v[1] - problem.optimum.y for _, v in items]
-
-                        # # Print curve
-                        # for i in range(len(x)):
-                        #     print(f"Eval: {x[i]}, Best so far: {y[i]}")
-
-                        achieved_aucs[(fid, iid, rep, a1_budget, algname)] = auc(x, y)
+                    _record_performance(
+                        problem, fid, iid, rep, metric_budget, algname,
+                        total_budget, achieved_regrets, achieved_aucs,
+                    )
 
                     problem.reset()
                 
@@ -624,27 +754,9 @@ def collect_data(a1_budget, dim, algs_to_run=["DE", "MLSL", "PSO", "BFGS", "Non-
         # The internal-state rows have already been appended after each fid.
         # This keeps memory usage bounded for long experiments.
 
-        # Write this algorithm's results before moving to the next algorithm.
-        regrets_df = pd.DataFrame(
-            [{"fid": fid, "iid": iid, "rep": rep, "a1_budget": budget, "algname": result_algname, "achieved_regret": regret}
-             for (fid, iid, rep, budget, result_algname), regret in achieved_regrets.items()],
-            columns=["fid", "iid", "rep", "a1_budget", "algname", "achieved_regret"],
-        )
-        aucs_df = pd.DataFrame(
-            [{"fid": fid, "iid": iid, "rep": rep, "a1_budget": budget, "algname": result_algname, "achieved_auc": auc_value}
-             for (fid, iid, rep, budget, result_algname), auc_value in achieved_aucs.items()],
-            columns=["fid", "iid", "rep", "a1_budget", "algname", "achieved_auc"],
-        )
-
-        safe_df_to_csv(
-            str(data_root / "achieved_regrets"),
-            f'achieved_regrets_{algname}_B{a1_budget}_{dim}D{output_suffix}.csv',
-            regrets_df,
-        )
-        safe_df_to_csv(
-            str(data_root / "achieved_aucs"),
-            f'achieved_aucs_{algname}_B{a1_budget}_{dim}D{output_suffix}.csv',
-            aucs_df,
+        _write_performance_metrics(
+            data_root, algname, run_tag, dim, output_suffix,
+            achieved_regrets, achieved_aucs,
         )
 
 if __name__ == "__main__":
@@ -682,6 +794,19 @@ if __name__ == "__main__":
     else:
         use_ma = False
 
+    if len(sys.argv) > 7:
+        standalone_arg = sys.argv[7].strip().lower()
+        if standalone_arg not in {"true", "false"}:
+            raise ValueError("standalone must be 'true' or 'false'")
+        standalone = standalone_arg == "true"
+    else:
+        standalone = False
+
+    if len(sys.argv) > 8:
+        instance_ids = [int(iid) for iid in sys.argv[8].split(",")]
+    else:
+        instance_ids = None
+
     collect_data(
         a1_budget=a1_budget,
         dim=dimension,
@@ -689,4 +814,6 @@ if __name__ == "__main__":
         fids=function_ids,
         output_suffix=suffix,
         use_ma=use_ma,
+        standalone=standalone,
+        iids=instance_ids,
     )
