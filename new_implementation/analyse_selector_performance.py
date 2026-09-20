@@ -1,13 +1,18 @@
 """Plot achieved selector performance for every BBOB function.
 
-Set ``METRIC`` below to either ``"regret"`` or ``"auc"`` and run this file.
+With ``STANDALONE_BOXPLOTS = True``, run this file to plot all six standalone
+algorithms for both metrics in every data/dim_*_standalone dataset. Zeros
+are displayed at an annotated positive floor on the logarithmic axis.
+Set it to False to run the selector analysis instead.
 For each FID, the plot contains one box for every evaluated number of
 lookahead models, plus VBS, the configured static model, and Non-elitist.
 """
 
 from math import ceil
 from pathlib import Path
+import re
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -23,6 +28,8 @@ LOOKAHEAD_COUNTS = [0,10,20]
 MA = True
 # Use default-dataset models for MA results; False uses matching-dataset models.
 models_default = True
+STANDALONE_BOXPLOTS = True
+STANDALONE_ALGORITHMS = ["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]
 
 
 def result_directory_name(dim: int, ma: bool, models_default: bool) -> str:
@@ -118,6 +125,11 @@ def save_figure_as_pdf(figure: go.Figure, output_path: Path) -> None:
 def plot_function_wise_boxplots(
     results: pd.DataFrame, value_columns: list[str], metric: str,
     lookahead_counts: list[int] | None = None,
+    *,
+    dim: int | None = None,
+    output_directory: Path | None = None,
+    output_filename: str | None = None,
+    zero_floor: float | None = None,
 ) -> Path:
     """Plot selected lookahead counts for every FID with all three baselines.
 
@@ -143,11 +155,13 @@ def plot_function_wise_boxplots(
         pio.kaleido.scope.mathjax = None
 
     colours = [TAB20_COLOURS[index % len(TAB20_COLOURS)] for index in range(len(value_columns))]
-    dimension_directory = result_directory_name(DIM, MA, models_default)
-    output_directory = PLOT_DIR / dimension_directory / metric / "log_scale_boxplots"
+    dim = DIM if dim is None else dim
+    if output_directory is None:
+        dimension_directory = result_directory_name(DIM, MA, models_default)
+        output_directory = PLOT_DIR / dimension_directory / metric / "log_scale_boxplots"
     output_directory.mkdir(parents=True, exist_ok=True)
     rows = ceil(len(fids) / PLOT_COLUMNS)
-    subplot_titles = [f"Function f{fid} (dim={DIM})" for fid in fids]
+    subplot_titles = [f"Function f{fid} (dim={dim})" for fid in fids]
     subplot_titles.extend([""] * (rows * PLOT_COLUMNS - len(fids)))
     figure = make_subplots(
         rows=rows,
@@ -222,9 +236,17 @@ def plot_function_wise_boxplots(
         margin={"l": 80, "r": 50, "t": 110, "b": 50},
         showlegend=False,
     )
+    if zero_floor is not None:
+        figure.add_annotation(
+            text=f"Zero values displayed at {zero_floor:.3g} on the logarithmic scale",
+            xref="paper", yref="paper", x=0.5, y=1.035,
+            showarrow=False, font={"size": 13},
+        )
     # Add considered lookaheads to filename
-    OUTPUT_FILENAME = f"function_wise_boxplots_{metric}_{','.join(str(l) for l in lookahead_counts)}.pdf"
-    output_path = output_directory / OUTPUT_FILENAME
+    if output_filename is None:
+        counts = "all" if lookahead_counts is None else ','.join(map(str, lookahead_counts))
+        output_filename = f"function_wise_boxplots_{metric}_{counts}.pdf"
+    output_path = output_directory / output_filename
     save_figure_as_pdf(figure, output_path)
     return output_path
 
@@ -493,24 +515,83 @@ def plot_a2_distribution_and_switching(
     return output_paths
 
 
+def load_standalone_plot_data(directory: Path, metric: str, dim: int) -> pd.DataFrame:
+    """Load B0 standalone runs, requiring matching run keys across algorithms."""
+    column = f"achieved_{metric}"
+    frames = []
+    for algorithm in STANDALONE_ALGORITHMS:
+        path = directory / f"achieved_{metric}s" / f"achieved_{metric}s_{algorithm}_B0_{dim}D.csv"
+        frame = pd.read_csv(path)
+        required = [*KEY_COLUMNS, "a1_budget", "algname", column]
+        missing = set(required) - set(frame.columns)
+        if missing:
+            raise ValueError(f"{path}: missing columns {sorted(missing)}")
+        if frame.empty or frame[KEY_COLUMNS].isna().any().any():
+            raise ValueError(f"{path}: empty data or missing run keys")
+        if not frame["a1_budget"].eq(0).all() or not frame["algname"].eq(algorithm).all():
+            raise ValueError(f"{path}: expected standalone B0 runs for {algorithm}")
+        values = pd.to_numeric(frame[column], errors="raise")
+        if not np.isfinite(values).all() or values.lt(0).any():
+            raise ValueError(f"{path}: expected finite, nonnegative values")
+        series = frame.set_index(KEY_COLUMNS)[column].rename(algorithm)
+        if not series.index.is_unique:
+            raise ValueError(f"{path}: duplicate run keys")
+        if frames and (len(series) != len(frames[0]) or not series.index.isin(frames[0].index).all()):
+            raise ValueError(f"{path}: run keys differ between algorithms")
+        frames.append(series)
+    return pd.concat(frames, axis=1).reset_index()
+
+
+def plot_standalone_boxplots() -> None:
+    """Save both metrics for every standalone dataset using the selector layout."""
+    directories = sorted((Path(__file__).resolve().parent / "data").glob("dim_*_standalone"))
+    if not directories:
+        raise FileNotFoundError(f"No standalone datasets found in {Path(__file__).resolve().parent / 'data'}")
+    for directory in directories:
+        match = re.fullmatch(r"dim_(\d+)(?:_ma)?_standalone", directory.name)
+        if match is None:
+            continue
+        dim = int(match.group(1))
+        for metric in ["auc", "regret"]:
+            results = load_standalone_plot_data(directory, metric, dim)
+            values = results[STANDALONE_ALGORITHMS]
+            zero_floor = None
+            if values.eq(0).any().any():
+                positive_min = values.where(values.gt(0)).min().min()
+                if pd.isna(positive_min):
+                    raise ValueError(f"{directory}: no positive {metric} values for a log scale")
+                zero_floor = positive_min / 10
+                results[STANDALONE_ALGORITHMS] = values.mask(values.eq(0), zero_floor)
+            output_path = plot_function_wise_boxplots(
+                results, STANDALONE_ALGORITHMS, metric, dim=dim,
+                zero_floor=zero_floor,
+                output_directory=Path(__file__).resolve().parent / "plots" / directory.name / metric / "log_scale_boxplots",
+                output_filename=f"function_wise_boxplots_{metric}_standalone.pdf",
+            )
+            print(f"Saved {output_path} ({len(results)} runs per algorithm)", flush=True)
+
+
+
 def main() -> None:
     global METRIC, DIM, MA, models_default, RESULTS_DIR
 
-    for DIM in [5, 40]:
-        for MA in [False, True]:
-            for models_default in ([False, True] if MA else [False]):
-                RESULTS_DIR = Path("results") / result_directory_name(DIM, MA, models_default)
-                for METRIC in ["auc", "regret"]:
-                    # results, value_columns = load_plot_data(METRIC)
-                    # output_path = plot_function_wise_boxplots(
-                    #     results,
-                    #     value_columns,
-                    #     METRIC,
-                    #     lookahead_counts=LOOKAHEAD_COUNTS,
-                    # )
-                    # print(f"Saved function-wise boxplots to {output_path}")
-                    for output_path in plot_a2_distribution_and_switching(LOOKAHEAD_COUNTS):
-                        print(f"Saved A2 distribution and switching plots to {output_path}")
+    plot_standalone_boxplots()
+    
+    # for DIM in [5, 40]:
+    #     for MA in [False, True]:
+    #         for models_default in ([False, True] if MA else [False]):
+    #             RESULTS_DIR = Path("results") / result_directory_name(DIM, MA, models_default)
+    #             for METRIC in ["auc", "regret"]:
+    #                 # results, value_columns = load_plot_data(METRIC)
+    #                 # output_path = plot_function_wise_boxplots(
+    #                 #     results,
+    #                 #     value_columns,
+    #                 #     METRIC,
+    #                 #     lookahead_counts=LOOKAHEAD_COUNTS,
+    #                 # )
+    #                 # print(f"Saved function-wise boxplots to {output_path}")
+    #                 for output_path in plot_a2_distribution_and_switching(LOOKAHEAD_COUNTS):
+    #                     print(f"Saved A2 distribution and switching plots to {output_path}")
 
 
 if __name__ == "__main__":
