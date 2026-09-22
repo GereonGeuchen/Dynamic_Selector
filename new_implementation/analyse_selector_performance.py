@@ -23,6 +23,7 @@ import plotly.io as pio
 # Change this to "auc" to plot the AUC results instead.
 METRIC = "auc"
 DIM = 5
+TEST_IIDS = [6, 7]
 # None includes all available values; otherwise use lists such as [1, 5, 10].
 LOOKAHEAD_COUNTS = [0,10,20]
 MA = True
