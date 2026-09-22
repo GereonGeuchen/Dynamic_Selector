@@ -39,6 +39,7 @@ STATIC_BUDGET = 150
 OUTPUT_FILENAME = "function_wise_lookahead_boxplots_600_static.pdf"
 PLOT_COLUMNS = 4
 KEY_COLUMNS = ["fid", "iid", "rep"]
+TEST_IIDS = [6, 7]
 TAB20_COLOURS = [
     "#1F77B4", "#AEC7E8", "#FF7F0E", "#FFBB78", "#2CA02C", "#98DF8A",
     "#D62728", "#FF9896", "#9467BD", "#C5B0D5", "#8C564B", "#C49C94",
@@ -493,25 +494,180 @@ def plot_a2_distribution_and_switching(
     return output_paths
 
 
+def calculate_vbs_choices(
+    *,
+    metric: str,
+    dim: int,
+    iids: list[int] | None = None,
+    data_directory: Path | None = None,
+) -> pd.DataFrame:
+    """Return the VBS algorithm and budget for every recorded run.
+
+    The VBS is computed from the same raw achieved-metric files as the
+    selector: the lowest metric across all A2 algorithm/budget combinations
+    and the no-switch baseline. Equal metric values use the latest budget,
+    then alphabetical algorithm order, to yield one reproducible choice.
+    """
+    if metric not in {"auc", "regret"}:
+        raise ValueError('metric must be either "auc" or "regret".')
+
+    root = Path(__file__).resolve().parent
+    dataset_directory = f"dim_{dim}_ma" if MA else f"dim_{dim}"
+    metric_directory = (
+        Path(data_directory)
+        if data_directory is not None
+        else root / "data" / dataset_directory / f"achieved_{metric}s"
+    )
+    metric_paths = sorted(metric_directory.glob(f"achieved_{metric}s_*_{dim}D.csv"))
+    if not metric_paths:
+        raise FileNotFoundError(f"No achieved-{metric} files found in {metric_directory}")
+
+    metric_column = f"achieved_{metric}"
+    choices = pd.concat(
+        [
+            pd.read_csv(
+                path,
+                usecols=[*KEY_COLUMNS, "a1_budget", "algname", metric_column],
+            )
+            for path in metric_paths
+        ],
+        ignore_index=True,
+    )
+    if iids is not None:
+        choices = choices.loc[choices["iid"].isin(iids)]
+    if choices.empty:
+        raise ValueError("No achieved-metric runs found for the requested instances.")
+    if choices.duplicated([*KEY_COLUMNS, "algname", "a1_budget"]).any():
+        raise ValueError("Conflicting metric values for the same run, algorithm and budget.")
+
+    choices = choices.sort_values(
+        [*KEY_COLUMNS, metric_column, "a1_budget", "algname"],
+        ascending=[True, True, True, True, False, True],
+        kind="stable",
+    )
+    return (
+        choices.drop_duplicates(KEY_COLUMNS)
+        .rename(
+            columns={
+                "algname": "selected_algorithm",
+                "a1_budget": "switch_budget",
+                metric_column: f"vbs_{metric}",
+            }
+        )
+        .reset_index(drop=True)
+    )
+
+
+def plot_vbs_distribution_and_switching(
+    *,
+    metric: str | None = None,
+    dim: int | None = None,
+    iids: list[int] | None = None,
+    data_directory: Path | None = None,
+) -> Path:
+    """Save the VBS counterpart of the A2 distribution and switching plot.
+
+    By default, only the selector test instances (IIDs 6 and 7) are shown.
+    """
+    metric = METRIC if metric is None else metric
+    dim = DIM if dim is None else dim
+    iids = TEST_IIDS if iids is None else iids
+    choices = calculate_vbs_choices(
+        metric=metric,
+        dim=dim,
+        iids=iids,
+        data_directory=data_directory,
+    )
+
+    # VBS comes directly from raw outcomes, so model-training provenance is irrelevant.
+    directory = f"dim_{dim}_ma" if MA else f"dim_{dim}"
+    vbs_results_directory = Path("results") / directory / metric
+    vbs_results_directory.mkdir(parents=True, exist_ok=True)
+    choices.to_csv(
+        vbs_results_directory / "vbs_choices.csv", index=False,
+        columns=[*KEY_COLUMNS, "selected_algorithm", "switch_budget", f"vbs_{metric}"],
+    )
+
+    output_directory = PLOT_DIR / directory / metric / "vbs_distribution_and_switching"
+    colours = {
+        "BFGS": "#1f77b4", "Non-elitist": "#ff7f0e", "DE": "#2ca02c",
+        "PSO": "#d62728", "MLSL": "#9467bd", "Elitist": "#8c564b",
+    }
+    display_names = {
+        "Elitist": "CMA-ES, elitist", "Non-elitist": "CMA-ES, non-elitist",
+    }
+    unknown = set(choices["selected_algorithm"]) - set(colours)
+    if unknown:
+        raise ValueError(f"Unknown VBS algorithms: {sorted(unknown)}")
+
+    fids = sorted(choices["fid"].unique())
+    frequencies = pd.crosstab(choices["fid"], choices["selected_algorithm"])
+    proportions = frequencies.div(frequencies.sum(axis=1), axis=0).reindex(fids)
+    figure = make_subplots(
+        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.13,
+        subplot_titles=["VBS algorithm distribution", "VBS switching budget"],
+    )
+    for algorithm, colour in colours.items():
+        if algorithm not in proportions.columns:
+            continue
+        figure.add_trace(go.Bar(
+            x=fids, y=proportions[algorithm],
+            name=display_names.get(algorithm, algorithm), marker_color=colour,
+            width=0.86,
+            hovertemplate="f%{x}<br>Proportion: %{y:.1%}<extra>%{fullData.name}</extra>",
+        ), row=1, col=1)
+    for fid in fids:
+        budgets = choices.loc[choices["fid"] == fid, "switch_budget"]
+        figure.add_trace(go.Box(
+            x=[fid] * len(budgets), y=budgets, name=f"f{fid}",
+            boxpoints=False, width=0.55, fillcolor="royalblue",
+            line={"color": "black", "width": 1.5}, showlegend=False,
+        ), row=2, col=1)
+    figure.update_xaxes(
+        tickmode="array", tickvals=fids, range=[min(fids) - 0.5, max(fids) + 0.5],
+        showticklabels=True, showline=True, linecolor="black", zeroline=False,
+    )
+    figure.update_xaxes(title_text="BBOB function", row=2, col=1)
+    figure.update_yaxes(title_text="Proportion", range=[0, 1], tickformat=".0%", row=1, col=1)
+    figure.update_yaxes(title_text="Switching budget", rangemode="tozero", row=2, col=1)
+    figure.update_layout(
+        title=f"{metric.upper()} - VBS ({directory})",
+        barmode="stack", template="plotly_white", width=1200, height=800,
+        font={"size": 14}, margin={"l": 80, "r": 30, "t": 130, "b": 60},
+        legend={"orientation": "h", "x": 0.5, "xanchor": "center", "y": 1.14},
+    )
+    instance_suffix = "" if iids is None else "_iids_" + "-".join(map(str, sorted(set(iids))))
+    output_directory.mkdir(parents=True, exist_ok=True)
+    output_path = output_directory / f"vbs_distribution_and_switching{instance_suffix}.pdf"
+    figure.write_image(output_path, format="pdf", width=1200, height=800, scale=1)
+    return output_path
+
+
 def main() -> None:
     global METRIC, DIM, MA, models_default, RESULTS_DIR
 
     for DIM in [5, 40]:
         for MA in [False, True]:
-            for models_default in ([False, True] if MA else [False]):
-                RESULTS_DIR = Path("results") / result_directory_name(DIM, MA, models_default)
-                for METRIC in ["auc", "regret"]:
-                    # results, value_columns = load_plot_data(METRIC)
-                    # output_path = plot_function_wise_boxplots(
-                    #     results,
-                    #     value_columns,
-                    #     METRIC,
-                    #     lookahead_counts=LOOKAHEAD_COUNTS,
-                    # )
-                    # print(f"Saved function-wise boxplots to {output_path}")
-                    for output_path in plot_a2_distribution_and_switching(LOOKAHEAD_COUNTS):
-                        print(f"Saved A2 distribution and switching plots to {output_path}")
-
+            # for models_default in ([False, True] if MA else [False]):
+            #     RESULTS_DIR = Path("results") / result_directory_name(DIM, MA, models_default)
+            #     for METRIC in ["auc", "regret"]:
+            #         # results, value_columns = load_plot_data(METRIC)
+            #         # output_path = plot_function_wise_boxplots(
+            #         #     results,
+            #         #     value_columns,
+            #         #     METRIC,
+            #         #     lookahead_counts=LOOKAHEAD_COUNTS,
+            #         # )
+            #         # print(f"Saved function-wise boxplots to {output_path}")
+            #         for output_path in plot_a2_distribution_and_switching(LOOKAHEAD_COUNTS):
+            #             print(f"Saved A2 distribution and switching plots to {output_path}")
+            plot_vbs_distribution_and_switching(metric=METRIC, dim=DIM)
+            directory = f"dim_{DIM}_ma" if MA else f"dim_{DIM}"
+            print(
+                f"Saved VBS distribution and switching plots for {METRIC}, "
+                f"dim={DIM}, MA={MA} to "
+                f"{PLOT_DIR / directory / METRIC / 'vbs_distribution_and_switching'}"
+            )
 
 if __name__ == "__main__":
     main()
