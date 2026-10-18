@@ -893,7 +893,7 @@ class DynamicSelector:
 
         return models
 
-    def train_models(self, training_data_is_stored: bool = False, store_trained_models: bool = True):
+    def train_models(self, training_data_is_stored: bool = False):
         
         if not training_data_is_stored:
             selection_model_training_data, ela_scalers = create_selection_model_data(data_path=self.raw_data_path, switching_budgets=self.switching_budgets, store_data=True)
@@ -994,26 +994,24 @@ class DynamicSelector:
                 switching_model.fit(switching_model_train_data[switch_feature_cols], y_train_switch)
                 self.models[budget]["switching_models"][lookahead_count] = switching_model
 
-                if store_trained_models:
-                    variant_budget_path = switching_model_variant_path(
-                        self.model_path, budget, lookahead_count
-                    )
-                    os.makedirs(variant_budget_path, exist_ok=True)
-                    joblib.dump(
-                        switching_model,
-                        os.path.join(variant_budget_path, "switching_model.joblib"),
-                    )
+                variant_budget_path = switching_model_variant_path(
+                    self.model_path, budget, lookahead_count
+                )
+                os.makedirs(variant_budget_path, exist_ok=True)
+                joblib.dump(
+                    switching_model,
+                    os.path.join(variant_budget_path, "switching_model.joblib"),
+                )
                     
             self.models[budget]["ela_scaler"] = ela_scalers[budget]
 
-            if store_trained_models:
-                model_budget_path = os.path.join(self.model_path, f"budget_{budget}")
-                os.makedirs(model_budget_path, exist_ok=True)
+            model_budget_path = os.path.join(self.model_path, f"budget_{budget}")
+            os.makedirs(model_budget_path, exist_ok=True)
 
-                joblib.dump(selector, os.path.join(model_budget_path, "selection_model.joblib"))
-                joblib.dump(lookahead_models, os.path.join(model_budget_path, "lookahead_models.joblib"))
+            joblib.dump(selector, os.path.join(model_budget_path, "selection_model.joblib"))
+            joblib.dump(lookahead_models, os.path.join(model_budget_path, "lookahead_models.joblib"))
 
-                joblib.dump(self.models[budget]["ela_scaler"], os.path.join(model_budget_path, f"ela_scaler.joblib"))
+            joblib.dump(self.models[budget]["ela_scaler"], os.path.join(model_budget_path, f"ela_scaler.joblib"))
 
     def simulate_single_run(self, fid: int, iid: int, rep: int, ela_rep: pd.DataFrame, metrics: pd.DataFrame, lookahead_count: int) -> dict:
         """
@@ -1199,7 +1197,9 @@ class DynamicSelector:
 
                     result_df.to_csv(output_path, mode="a", header=not os.path.exists(output_path), index=False)
 
-def build_switching_training_data_from_stored_tables(data_path: str, dataset: str = "default") -> None:
+# Builds switching-model training data, reusing stored selection and lookahead
+# tables when available and rebuilding/storing any missing intermediate tables.
+def build_training_data(data_path: str, dataset: str = "default") -> None:
     raw_data_path = dimension_scoped_path(data_path, dataset)
     data_path = metric_scoped_path(raw_data_path)
     selection_model_training_data = {}
@@ -1272,7 +1272,7 @@ def parse_args() -> argparse.Namespace:
         "--dataset",
         choices=["default", "ma"],
         default="default",
-        help="Dataset collection to train on or evaluate; 'ma' uses dim_<DIM>_ma.",
+        help="Dataset collection to train on or evaluate; 'ma' uses dim_<DIM>_ma. (I.e. whether or not to use ma-BBOB).",
     )
     parser.add_argument(
         "--model-dataset",
@@ -1290,11 +1290,6 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Load prepared training tables instead of recreating them during training.",
     )
-    parser.add_argument(
-        "--no-store-trained-models",
-        action="store_true",
-        help="Train models without writing joblib files.",
-    )
     return parser.parse_args()
 
 
@@ -1303,7 +1298,7 @@ def main() -> None:
     configure_experiment(args.dimension, args.metric)
 
     if args.mode == "build-switch-data":
-        build_switching_training_data_from_stored_tables("./data", args.dataset)
+        build_training_data("./data", args.dataset)
         return
 
     if args.mode == "evaluate":
@@ -1324,7 +1319,6 @@ def main() -> None:
     )
     selector.train_models(
         training_data_is_stored=args.training_data_is_stored,
-        store_trained_models=not args.no_store_trained_models,
     )
 
     if args.mode == "train-evaluate":
