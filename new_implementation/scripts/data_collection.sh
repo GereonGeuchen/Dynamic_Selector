@@ -2,11 +2,10 @@
 
 ENV_PATH="/home/p0027894/Dynamic_Selector/envs/dynamic_selector_venv"
 WORKDIR="/hpcwork/p0027894/Dynamic_Selector/new_implementation"
-PY_SCRIPT="data_collection.py"
 DIMENSION=40
 # Pass `true` as the first script argument to collect ManyAffine data:
 # ./data_collection.sh true
-USE_MA="${1:-true}"
+USE_MA="${1:-false}"
 
 case "$USE_MA" in
   true|false) ;;
@@ -27,8 +26,6 @@ for i in $(seq 1 19); do
 done
 
 algs_to_run=("BFGS" "MLSL" "Elitist" "DE" "PSO")
-algs_to_run=("DE")
-
 
 for BUDGET in "${BUDGETS[@]}"; do
   for alg in "${algs_to_run[@]}"; do
@@ -48,7 +45,7 @@ module load GCCcore/12.2.0
 module load Python/3.10.8
 source "$ENV_PATH/bin/activate"
 
-python "$PY_SCRIPT" "$BUDGET" "$alg" "$DIMENSION" "$FUNCTION_IDS" "" "$USE_MA"
+PYTHONPATH="$WORKDIR/src" python -m data_collection.standard "$BUDGET" "$alg" "$DIMENSION" "$FUNCTION_IDS" "" "$USE_MA"
 
 EOF
   done

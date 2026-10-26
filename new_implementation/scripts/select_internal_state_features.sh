@@ -30,7 +30,7 @@ module load GCCcore/12.2.0
 module load Python/3.10.8
 source "$ENV_PATH/bin/activate"
 
-python select_internal_state_features.py "$INPUT_CSV" \\
+python src_old/select_internal_state_features.py "$INPUT_CSV" \\
     --dimension "$DIMENSION" \\
     --budget "$BUDGET" \\
     --n-jobs "$CPUS" \\

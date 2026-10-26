@@ -50,6 +50,6 @@ source "$ENV_PATH/bin/activate"
 
 # Arguments: A1 budget, algorithms, dimension, FIDs, suffix, ManyAffine,
 # standalone mode, and IIDs.  B0 is recorded automatically in standalone mode.
-python data_collection.py 0 "$algorithm" "$DIMENSION" "$FUNCTION_IDS" "" "$USE_MA" true "1,2,3,4,5,6,7"
+PYTHONPATH="$WORKDIR/src" python -m data_collection.standard 0 "$algorithm" "$DIMENSION" "$FUNCTION_IDS" "" "$USE_MA" true "1,2,3,4,5,6,7"
 EOF
 done

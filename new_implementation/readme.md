@@ -24,6 +24,28 @@ Each run starts with the A1 algorithm. For every candidate switching budget, the
 - Would it have been better to switch now or wait for a later budget?
 - What ELA features were visible at the time the selector would have had to decide?
 
+### Standalone baselines
+
+`collect_data()` can also collect direct, non-switched baselines by passing
+`standalone=True`.  In this mode DE, MLSL, PSO, BFGS, and both CMA-ES variants
+are initialized from scratch, run for the full budget, and have their raw IOH
+traces, regrets, and AUCs saved.  It deliberately skips ELA extraction and
+internal-state logging.  There is no A1 phase; metric rows use
+`a1_budget=0` to make that explicit.  For the requested 20 runs on BBOB
+instances 6 and 7, for example:
+
+```python
+collect_data(
+    a1_budget=0, dim=40, standalone=True, iids=range(6, 8),
+    repetitions=20, use_ma=False,
+)
+```
+
+Set `use_ma=True` for the ManyAffine BBOB realization.  Standalone outputs are
+stored in `data/dim_<D>_standalone` (or `data/dim_<D>_ma_standalone`) and use
+`B0` in their file names, e.g. `achieved_aucs_DE_B0_40D.csv`.  They therefore
+cannot overwrite switched-run data.
+
 ### Generated data
 
 The data collection writes three kinds of data.
@@ -97,26 +119,18 @@ base model path:   ./models
 base results path: ./results
 ```
 
-All selector-managed artifacts are stored in a metric-specific subfolder under each base path. With `METRIC = "regret"`, the effective directories are:
+The command-line interface uses `./data`, `./models`, and `./results`. All
+selector-managed artifacts are stored in a metric-specific subfolder under the
+dimension/dataset directory. For the default 40-dimensional regret experiment,
+the effective directories are:
 
 ```text
-data:    ./data/regret
-models:  ./models/regret
-results: ./results/regret
+data:    ./data/dim_40/regret
+models:  ./models/dim_40/regret
+results: ./results/dim_40/regret
 ```
 
 Raw inputs produced by `data_collection.py` (`achieved_*` and `ela_features`) are read from the base data folder (`./data`). Selector-generated tables, models, and results are still written under the metric-scoped subfolders.
-
-They can be changed with:
-
-```bash
-python selector.py --mode train \
-  --data-path ./data \
-  --model-path ./models \
-  --results-path ./results
-```
-
-In this example, training reads/writes under `./data/regret`, stores models under `./models/regret`, and writes evaluation outputs under `./results/regret`.
 
 The available execution modes are:
 
@@ -142,11 +156,7 @@ This trains, for every switching budget:
 - a switching model, and
 - the ELA scaler.
 
-By default, trained models are stored in `./models/regret`. To train without writing model files, use:
-
-```bash
-python selector.py --mode train --training-data-is-stored --no-store-trained-models
-```
+Trained models are stored in `./models/dim_40/regret` by default.
 
 If the intermediate training tables should be recreated from the collected raw data, omit `--training-data-is-stored`:
 
@@ -163,6 +173,19 @@ Evaluate stored models with:
 ```bash
 python selector.py --mode evaluate
 ```
+
+To evaluate models trained on the standard collection against ManyAffine (MA)
+data, keep the model source and evaluation dataset separate:
+
+```bash
+python selector.py --mode evaluate --dimension 40 --metric regret \
+  --dataset ma --model-dataset default --lookahead-count 0
+```
+
+This loads from `models/dim_40/regret` and writes to
+`results/dim_40_ma_models_default/regret/lookahead_0`, making the cross-dataset
+configuration explicit. Submit all lookahead variants with
+`./scripts/selector.sh 40 regret default ma`.
 
 The evaluation loads models from `./models/regret` by default. Each budget directory must contain:
 
@@ -198,7 +221,7 @@ selector = DynamicSelector(
     load_models=False,
 )
 
-selector.train_models(training_data_is_stored=True, store_trained_models=True)
+selector.train_models(training_data_is_stored=True)
 selector.evaluate()
 ```
 

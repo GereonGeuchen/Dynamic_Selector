@@ -37,6 +37,6 @@ module load GCCcore/12.2.0
 module load Python/3.10.8
 source "$ENV_PATH/bin/activate"
 
-python interpolation_evaluate.py --dimension "$DIMENSION" --metric "$METRIC" --lookahead-count "$LOOKAHEAD_COUNT"
+PYTHONPATH="$WORKDIR/src" python -m selector.evaluators.interpolation --dimension "$DIMENSION" --metric "$METRIC" --lookahead-count "$LOOKAHEAD_COUNT"
 EOF
 done

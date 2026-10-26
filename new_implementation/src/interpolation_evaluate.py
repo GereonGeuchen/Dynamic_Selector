@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 import selector as selector_module
-from interpolation_data_collection import default_specs
+from data_collection.interpolation_data_collection import default_specs
 
 
 INTERPOLATION_META_COLS = ["fid_a", "fid_b", "alpha"]

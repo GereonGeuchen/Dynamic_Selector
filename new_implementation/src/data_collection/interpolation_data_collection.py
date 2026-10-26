@@ -16,7 +16,7 @@ import ioh
 import numpy as np
 import pandas as pd
 
-from data_collection import (
+from data_collection.data_collection import (
     ALGORITHM_SPECS,
     DEFAULT_ALGORITHMS,
     TrackedParameters,
@@ -28,7 +28,18 @@ from data_collection import (
 )
 
 
-PAIRS = ((2, 10), (24, 21), (21, 22), (24, 2))
+PAIRS = (
+    (2, 10),
+    (24, 21),
+    (21, 22),
+    (24, 2),
+    (1, 2),
+    (3, 15),
+    (8, 9),
+    (10, 11),
+    (5, 6),
+    (23, 24),
+)
 ALPHAS = (0.9, 0.7, 0.5, 0.3, 0.1)
 TEST_IIDS = (6, 7)
 
@@ -57,7 +68,7 @@ class InterpolationSpec:
 
 
 def default_specs() -> list[InterpolationSpec]:
-    """Return the 20 requested pair/interpolation combinations."""
+    """Return every configured pair/interpolation combination."""
     return [
         InterpolationSpec(fid_a, fid_b, alpha, internal_fid)
         for internal_fid, (fid_a, fid_b, alpha) in enumerate(
@@ -276,8 +287,9 @@ def main() -> None:
     parser.add_argument("--total-budget", type=int, default=1000)
     parser.add_argument("--suffix", default="")
     parser.add_argument(
-        "--interpolation-ids", default="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20",
-        help="Comma-separated one-based IDs from the fixed 20-mixture grid.",
+        "--interpolation-ids",
+        default=",".join(str(spec.internal_fid) for spec in default_specs()),
+        help="Comma-separated one-based IDs from the configured interpolation grid.",
     )
     parser.add_argument("--merge-suffixes", help="Comma-separated part suffixes to merge instead of collecting.")
     args = parser.parse_args()

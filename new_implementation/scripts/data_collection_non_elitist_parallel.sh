@@ -10,7 +10,7 @@ DIMENSION=40
 ALGORITHM="Non-elitist"
 # Pass `true` as the first argument to run the array on ManyAffine functions:
 # ./data_collection_non_elitist_parallel.sh true
-USE_MA="${1:-true}"
+USE_MA="${1:-false}"
 
 case "$USE_MA" in
   true) MERGE_MA_FLAG="--use-ma" ;;
@@ -40,7 +40,7 @@ cd "$WORKDIR"
 module load GCCcore/12.2.0
 module load Python/3.10.8
 source "$ENV_PATH/bin/activate"
-python data_collection.py "$BUDGET" "$ALGORITHM" "$DIMENSION" "\$SLURM_ARRAY_TASK_ID" ".part-\$SLURM_ARRAY_TASK_ID" "$USE_MA"
+PYTHONPATH="$WORKDIR/src" python -m data_collection.standard "$BUDGET" "$ALGORITHM" "$DIMENSION" "\$SLURM_ARRAY_TASK_ID" ".part-\$SLURM_ARRAY_TASK_ID" "$USE_MA"
 EOF
 )
 
@@ -61,7 +61,7 @@ module load GCCcore/12.2.0
 module load Python/3.10.8
 
 source "$ENV_PATH/bin/activate"
-python merge_data_collection_parts.py "$BUDGET" "$ALGORITHM" "$DIMENSION" $MERGE_MA_FLAG
+python scripts/merge_data_collection_parts.py "$BUDGET" "$ALGORITHM" "$DIMENSION" $MERGE_MA_FLAG
 EOF
 )
 

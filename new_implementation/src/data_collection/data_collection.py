@@ -9,6 +9,7 @@ This file contains the implementation of the data collection process. This inclu
 from dataclasses import asdict, dataclass, fields
 import os
 import sys
+import time
 from pathlib import Path
 import pandas as pd
 import warnings
@@ -384,6 +385,11 @@ def calculate_ela_features(evaluations, fid, iid, rep, a1_budget, dim, algname):
     - a2_algorithm: the name of the algorithm which was switched to (or "Non-elitist" in case no switch occured)
     - Remaining columns: the calculated ELA features
     """
+    # Store CPU and elapsed wall-clock time with every ELA snapshot so
+    # Slurm-array shards can be merged directly.
+    ela_cpu_start = time.process_time()
+    ela_wall_start = time.perf_counter()
+
     # Prepare the data for ELA calculation
     x_cols = [f'x{i}' for i in range(dim)]
     X = np.array([eval[0] for eval in evaluations.values()])
@@ -442,6 +448,8 @@ def calculate_ela_features(evaluations, fid, iid, rep, a1_budget, dim, algname):
             if key.endswith('.costs_runtime'):
                 features.pop(key)
 
+    features["ela_cpu_time_seconds"] = time.process_time() - ela_cpu_start
+    features["ela_wall_time_seconds"] = time.perf_counter() - ela_wall_start
     return features
 
 
@@ -460,9 +468,10 @@ def _collection_root(dim, use_ma, standalone):
     """Return the root directory for one collection mode."""
     if standalone:
         suffix = "ma_standalone" if use_ma else "standalone"
-    else:
-        suffix = "ma" if use_ma else "test"
-    return Path("data") / f"dim_{dim}_{suffix}"
+        return Path("data") / f"dim_{dim}_{suffix}"
+    if use_ma:
+        return Path("data") / f"dim_{dim}_ma"
+    return Path("data") / f"dim_{dim}"
 
 
 def _run_standalone_algorithm(problem, algorithm_class, algname, dim, budget,

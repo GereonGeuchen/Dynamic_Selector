@@ -1,5 +1,5 @@
 #!/bin/bash
-# Submit all collection jobs for the fixed 20 affine interpolation experiments.
+# Submit all collection jobs for the 50 configured affine interpolation experiments.
 #
 # The B50--B950 jobs are independent, one per switching budget.  The B1000
 # Non-elitist run computes ELA features and is therefore submitted once per
@@ -12,7 +12,7 @@ ENV_PATH="/rwthfs/rz/cluster/home/p0027894/Dynamic_Selector/envs/dynamic_selecto
 WORKDIR="/hpcwork/p0027894/Dynamic_Selector/new_implementation"
 DIMENSION="${1:-40}"
 REPETITIONS="${2:-20}"
-INTERPOLATION_IDS=($(seq 1 20))
+INTERPOLATION_IDS=($(seq 1 50))
 
 mkdir -p "$WORKDIR/logs"
 
@@ -35,7 +35,7 @@ cd "$WORKDIR"
 module load GCCcore/12.2.0
 module load Python/3.10.8
 source "$ENV_PATH/bin/activate"
-python interpolation_data_collection.py "$BUDGET" --dimension "$DIMENSION" --repetitions "$REPETITIONS"
+PYTHONPATH="$WORKDIR/src" python -m data_collection.interpolation "$BUDGET" --dimension "$DIMENSION" --repetitions "$REPETITIONS"
 EOF
 done
 
@@ -57,7 +57,7 @@ cd "$WORKDIR"
 module load GCCcore/12.2.0
 module load Python/3.10.8
 source "$ENV_PATH/bin/activate"
-python interpolation_data_collection.py 1000 --dimension "$DIMENSION" --algorithms Non-elitist --repetitions "$REPETITIONS" --interpolation-ids "$INTERPOLATION_ID" --suffix ".part-$INTERPOLATION_ID"
+PYTHONPATH="$WORKDIR/src" python -m data_collection.interpolation 1000 --dimension "$DIMENSION" --algorithms Non-elitist --repetitions "$REPETITIONS" --interpolation-ids "$INTERPOLATION_ID" --suffix ".part-$INTERPOLATION_ID"
 EOF
 )
   ELA_JOB_IDS+=("$ELA_JOB_ID")
@@ -82,7 +82,7 @@ cd "$WORKDIR"
 module load GCCcore/12.2.0
 module load Python/3.10.8
 source "$ENV_PATH/bin/activate"
-python interpolation_data_collection.py 1000 --dimension "$DIMENSION" --algorithms Non-elitist --merge-suffixes "$PART_SUFFIXES"
+PYTHONPATH="$WORKDIR/src" python -m data_collection.interpolation 1000 --dimension "$DIMENSION" --algorithms Non-elitist --merge-suffixes "$PART_SUFFIXES"
 EOF
 )
 
