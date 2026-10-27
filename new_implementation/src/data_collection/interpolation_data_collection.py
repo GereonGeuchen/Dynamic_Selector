@@ -167,7 +167,7 @@ def collect_interpolations(a1_budget: int, dim: int, algs_to_run=None,
     if len({spec.internal_fid for spec in specs}) != len(specs):
         raise ValueError("Each interpolation spec needs a unique internal_fid.")
     algorithms = DEFAULT_ALGORITHMS if algs_to_run is None else tuple(algs_to_run)
-    root = Path("data") / f"dim_{dim}_interpolation"
+    root = Path("data") / f"dim_{dim}_interpolation" / "run_data"
     specs_by_fid = {spec.internal_fid: spec for spec in specs}
     trigger = ioh.logger.trigger.OnImprovement()
 
@@ -240,7 +240,7 @@ def merge_parts(dim: int, a1_budget: int, algorithms: list[str], suffixes: list[
     """
     if not suffixes or any(not suffix for suffix in suffixes):
         raise ValueError("Provide one non-empty suffix for every part to merge.")
-    root = Path("data") / f"dim_{dim}_interpolation"
+    root = Path("data") / f"dim_{dim}_interpolation" / "run_data"
     run_tag = f"B{a1_budget}"
     for algorithm in algorithms:
         paths = []

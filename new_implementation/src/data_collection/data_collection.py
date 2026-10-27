@@ -465,13 +465,13 @@ DEFAULT_ALGORITHMS = tuple(name for _, name in ALGORITHM_SPECS)
 
 
 def _collection_root(dim, use_ma, standalone):
-    """Return the root directory for one collection mode."""
+    """Return the run-data directory for one collection mode."""
     if standalone:
         suffix = "ma_standalone" if use_ma else "standalone"
-        return Path("data") / f"dim_{dim}_{suffix}"
+        return Path("data") / f"dim_{dim}_{suffix}" / "run_data"
     if use_ma:
-        return Path("data") / f"dim_{dim}_ma"
-    return Path("data") / f"dim_{dim}"
+        return Path("data") / f"dim_{dim}_ma" / "run_data"
+    return Path("data") / f"dim_{dim}" / "run_data"
 
 
 def _run_standalone_algorithm(problem, algorithm_class, algname, dim, budget,

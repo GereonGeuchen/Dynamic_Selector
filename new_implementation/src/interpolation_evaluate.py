@@ -30,7 +30,7 @@ def evaluate_interpolations(dimension: int = 40, metric: str = "regret",
     dynamic_selector = selector_module.DynamicSelector(
         load_models=True, data_path=data_path, model_path=model_path,
     )
-    root = Path(data_path) / f"dim_{dimension}_interpolation"
+    root = Path(data_path) / f"dim_{dimension}_interpolation" / "run_data"
     budgets = dynamic_selector.switching_budgets
     metric_name = f"achieved_{metric}"
     metrics = pd.concat([

@@ -286,7 +286,7 @@ def plot_run_wise_switching_regrets(
     result_directory = result_directory_name(dim, MA, models_default)
     data_directory = (
         Path(data_directory) if data_directory is not None
-        else root / "data" / dimension_directory / f"achieved_{metric}s"
+        else root / "data" / dimension_directory / "run_data" / f"achieved_{metric}s"
     )
     output_directory = (
         Path(output_directory) if output_directory is not None
@@ -594,7 +594,7 @@ def calculate_vbs_choices(
     metric_directory = (
         Path(data_directory)
         if data_directory is not None
-        else root / "data" / dataset_directory / f"achieved_{metric}s"
+        else root / "data" / dataset_directory / "run_data" / f"achieved_{metric}s"
     )
     metric_paths = sorted(metric_directory.glob(f"achieved_{metric}s_*_{dim}D.csv"))
     if not metric_paths:

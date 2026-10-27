@@ -95,6 +95,33 @@ def dimension_scoped_path(base_path: str, dataset: str = "default") -> str:
         return normalized
     return os.path.join(base_path, dimension_directory)
 
+
+def run_data_path(base_path: str) -> str:
+    """Return the directory holding raw experiment outputs for one dataset."""
+    normalized = os.path.normpath(base_path)
+    if os.path.basename(normalized) == "run_data":
+        return normalized
+    return os.path.join(base_path, "run_data")
+
+
+def training_data_path(base_path: str) -> str:
+    """Return the directory holding derived training tables for one dataset."""
+    normalized = os.path.normpath(base_path)
+    if os.path.basename(normalized) == "training_data":
+        return normalized
+    return os.path.join(base_path, "training_data")
+
+
+def training_metric_path_from_run_data(run_data_directory: str) -> str:
+    """Return the metric-specific training-data path paired with run data."""
+    normalized = os.path.normpath(run_data_directory)
+    dataset_path = (
+        os.path.dirname(normalized)
+        if os.path.basename(normalized) == "run_data"
+        else normalized
+    )
+    return metric_scoped_path(training_data_path(dataset_path))
+
 # Path helpers encode the file naming convention created by data_collection.py.
 def achieved_metric_path(data_path: str, algorithm: str, budget: int) -> str:
     return os.path.join(data_path, f"achieved_{METRIC}s/achieved_{METRIC}s_{algorithm}_B{budget}_{DIM}D.csv")
@@ -339,7 +366,10 @@ def create_selection_model_data(data_path: str, switching_budgets: list, store_d
         selection_model_data[budget], ela_scalers[budget] = normalise_selection_model_data(selection_model_data_budget)
 
         if store_data:
-            output_path = os.path.join(metric_scoped_path(data_path), SELECTION_TRAINING_DATA_FOLDER)
+            output_path = os.path.join(
+                training_metric_path_from_run_data(data_path),
+                SELECTION_TRAINING_DATA_FOLDER,
+            )
             os.makedirs(output_path, exist_ok=True)
             budget_output_path = os.path.join(output_path, f"selection_model_training_data_budget_{budget}.csv")
             selection_model_data[budget].to_csv(budget_output_path, index=False)
@@ -772,7 +802,10 @@ def create_lookahead_model_data(selection_model_training_data: dict[int, pd.Data
         lookahead_model_training_data[budget] = lookahead_model_data_budget
 
         if store_final_data:
-            output_path = os.path.join(metric_scoped_path(data_output_path), LOOKAHEAD_TRAINING_DATA_FOLDER)
+            output_path = os.path.join(
+                training_metric_path_from_run_data(data_output_path),
+                LOOKAHEAD_TRAINING_DATA_FOLDER,
+            )
             os.makedirs(output_path, exist_ok=True)
             budget_output_path = os.path.join(output_path, f"lookahead_model_training_data_budget_{budget}.csv")
             lookahead_model_training_data[budget].to_csv(budget_output_path, index=False)
@@ -812,9 +845,9 @@ class DynamicSelector:
             result_directory = f"{result_directory}_models_{model_dataset}"
         self.results_path = metric_scoped_path(os.path.join(results_path, result_directory))
         self.switching_budgets = list(switching_budgets)
-        self.raw_data_path = dimension_scoped_path(data_path, dataset)
-        # self.data_path = metric_scoped_path(data_path)
-        self.data_path = metric_scoped_path(self.raw_data_path)
+        dataset_path = dimension_scoped_path(data_path, dataset)
+        self.raw_data_path = run_data_path(dataset_path)
+        self.data_path = metric_scoped_path(training_data_path(dataset_path))
         self.model_path = metric_scoped_path(dimension_scoped_path(model_path, model_dataset))
         
         if load_models:
@@ -1185,8 +1218,9 @@ class DynamicSelector:
 # Builds switching-model training data, reusing stored selection and lookahead
 # tables when available and rebuilding/storing any missing intermediate tables.
 def build_training_data(data_path: str, dataset: str = "default") -> None:
-    raw_data_path = dimension_scoped_path(data_path, dataset)
-    data_path = metric_scoped_path(raw_data_path)
+    dataset_path = dimension_scoped_path(data_path, dataset)
+    raw_data_path = run_data_path(dataset_path)
+    data_path = metric_scoped_path(training_data_path(dataset_path))
     selection_model_training_data = {}
     lookahead_model_training_data = {}
 
