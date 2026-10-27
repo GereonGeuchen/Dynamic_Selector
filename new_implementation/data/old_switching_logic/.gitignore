@@ -1,0 +1,6 @@
+# Keep legacy switching data local; do not add it to the repository.
+*
+
+# Track this directory marker and optional documentation.
+!.gitignore
+!README.md
