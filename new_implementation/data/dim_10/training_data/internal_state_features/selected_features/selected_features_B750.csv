@@ -1,0 +1,141 @@
+feature,importance
+mhl_norm__quantile__q_0.6,0.008151468542639623
+mhl_mean__median,0.006658268684114648
+d_norm__variation_coefficient,0.006593365480359684
+"d_norm__change_quantiles__f_agg_""mean""__isabs_True__qh_1.0__ql_0.0",0.006500514166949904
+d_mean__standard_deviation,0.00637583971342246
+mhl_norm__quantile__q_0.3,0.006364755162977959
+"d_norm__change_quantiles__f_agg_""mean""__isabs_True__qh_1.0__ql_0.2",0.006294193869671817
+"d_mean__fft_coefficient__attr_""abs""__coeff_0",0.006225923205043682
+d_mean__energy_ratio_by_chunks__num_segments_10__segment_focus_9,0.0059214412560141235
+d_mean__sum_values,0.005871691596365712
+"sigma__cwt_coefficients__coeff_12__w_20__widths_(2, 5, 10, 20)",0.005775914328970923
+mhl_mean__c3__lag_3,0.0056980204211508545
+mhl_norm__quantile__q_0.2,0.0055968857429116595
+d_norm__energy_ratio_by_chunks__num_segments_10__segment_focus_9,0.005537602734724787
+"d_mean__cwt_coefficients__coeff_0__w_20__widths_(2, 5, 10, 20)",0.005456995397031807
+"d_norm__fft_coefficient__attr_""real""__coeff_0",0.005308063018853179
+"d_mean__change_quantiles__f_agg_""mean""__isabs_False__qh_1.0__ql_0.0",0.005259345361975166
+d_norm__minimum,0.005228832829828996
+d_norm__energy_ratio_by_chunks__num_segments_10__segment_focus_8,0.005201060234203517
+mhl_norm__quantile__q_0.8,0.005073662985447185
+d_norm__quantile__q_0.1,0.0050182264285701704
+mhl_norm__quantile__q_0.4,0.004943570313247865
+d_norm__mean,0.004910545599140698
+"mhl_mean__fft_coefficient__attr_""abs""__coeff_0",0.004910357410348468
+d_mean__index_mass_quantile__q_0.7,0.004888431735866312
+d_norm__c3__lag_1,0.004811048884125167
+d_mean__minimum,0.004802009084255101
+"d_mean__change_quantiles__f_agg_""mean""__isabs_True__qh_1.0__ql_0.6",0.0046926545042579055
+d_mean__root_mean_square,0.004658331547663763
+mhl_mean__minimum,0.004652775565071506
+d_mean__mean_change,0.004650822263844766
+d_norm__root_mean_square,0.0045800799880658435
+mhl_norm__root_mean_square,0.004577927246968163
+"d_mean__linear_trend__attr_""slope""",0.004565524099771586
+"d_norm__fft_aggregated__aggtype_""centroid""",0.004515214591926176
+"d_mean__fft_aggregated__aggtype_""kurtosis""",0.004498503738259757
+"d_mean__fft_aggregated__aggtype_""skew""",0.004491529044459256
+d_mean__quantile__q_0.3,0.004481797117279525
+d_norm__absolute_sum_of_changes,0.00445844411438044
+d_mean__quantile__q_0.2,0.004423176948765301
+d_norm__standard_deviation,0.004414107639351029
+mhl_mean__abs_energy,0.004263855071030877
+"d_mean__change_quantiles__f_agg_""mean""__isabs_True__qh_1.0__ql_0.0",0.0042034998772168645
+"d_mean__agg_linear_trend__attr_""intercept""__chunk_len_5__f_agg_""min""",0.004086057015271326
+d_norm__c3__lag_2,0.004037720229369974
+"d_mean__agg_linear_trend__attr_""slope""__chunk_len_10__f_agg_""max""",0.003956190134494573
+d_mean__energy_ratio_by_chunks__num_segments_10__segment_focus_8,0.003918630262061886
+"d_mean__agg_linear_trend__attr_""intercept""__chunk_len_10__f_agg_""min""",0.00391160252086212
+d_mean__index_mass_quantile__q_0.9,0.003910046093067312
+"d_mean__change_quantiles__f_agg_""mean""__isabs_False__qh_1.0__ql_0.2",0.0039025978208953684
+d_norm__quantile__q_0.2,0.0038495848974078196
+d_norm__index_mass_quantile__q_0.2,0.003844766507683597
+"d_mean__cwt_coefficients__coeff_1__w_20__widths_(2, 5, 10, 20)",0.0037944439669319037
+sigma__c3__lag_2,0.0037821032434692046
+mhl_norm__benford_correlation,0.0037491452460583787
+"d_mean__agg_linear_trend__attr_""intercept""__chunk_len_50__f_agg_""mean""",0.0037188778627527956
+mhl_mean__c3__lag_1,0.003714669057316065
+"mhl_mean__fft_coefficient__attr_""real""__coeff_0",0.0034730618216115864
+"sigma__cwt_coefficients__coeff_9__w_10__widths_(2, 5, 10, 20)",0.0034308649851877773
+mhl_mean__benford_correlation,0.003428494190047651
+"d_mean__fft_coefficient__attr_""real""__coeff_0",0.0034252021827814024
+"d_mean__agg_linear_trend__attr_""slope""__chunk_len_50__f_agg_""max""",0.003423378871478062
+d_mean__variation_coefficient,0.0033505321697345526
+d_norm__range_count__max_1__min_-1,0.0032965272062524865
+"d_norm__agg_linear_trend__attr_""intercept""__chunk_len_5__f_agg_""var""",0.0032815925487575865
+d_mean__c3__lag_2,0.003277551547429595
+mhl_norm__sum_values,0.0032729389354374553
+pc_norm__sum_values,0.003269467616418689
+"d_mean__agg_linear_trend__attr_""intercept""__chunk_len_5__f_agg_""mean""",0.0032595824407372974
+d_mean__mean_n_absolute_max__number_of_maxima_7,0.00321530237243083
+d_mean__median,0.003213321536234555
+"d_mean__agg_linear_trend__attr_""intercept""__chunk_len_50__f_agg_""var""",0.0031707975116490434
+d_mean__time_reversal_asymmetry_statistic__lag_2,0.0031647802113325034
+d_mean__mean,0.0031307526442626967
+d_mean__abs_energy,0.003130701281171341
+"d_mean__fft_coefficient__attr_""real""__coeff_27",0.003119210632292495
+"sigma__linear_trend__attr_""slope""",0.0031107619092295693
+d_mean__variance,0.003106631486279023
+mhl_norm__mean,0.003079346021940029
+"d_mean__change_quantiles__f_agg_""mean""__isabs_False__qh_1.0__ql_0.8",0.0030668113051826647
+"d_mean__change_quantiles__f_agg_""mean""__isabs_False__qh_1.0__ql_0.4",0.0030623644591397663
+"d_norm__cwt_coefficients__coeff_6__w_20__widths_(2, 5, 10, 20)",0.003053295215866424
+"sigma__cwt_coefficients__coeff_4__w_20__widths_(2, 5, 10, 20)",0.003037622529586518
+"d_norm__fft_coefficient__attr_""abs""__coeff_15",0.003033000241946218
+ps_norm__root_mean_square,0.003014444102082503
+d_norm__index_mass_quantile__q_0.9,0.0030041915659012905
+"sigma__cwt_coefficients__coeff_5__w_20__widths_(2, 5, 10, 20)",0.003000467987935915
+"d_mean__agg_linear_trend__attr_""slope""__chunk_len_10__f_agg_""var""",0.0029995902098212514
+d_norm__quantile__q_0.8,0.0029417029135674552
+"d_mean__change_quantiles__f_agg_""mean""__isabs_False__qh_1.0__ql_0.6",0.0029203728618040887
+"d_mean__fft_aggregated__aggtype_""centroid""",0.002868969259617437
+d_norm__index_mass_quantile__q_0.7,0.0028583577801429543
+d_norm__c3__lag_3,0.00285450404134758
+"d_norm__agg_linear_trend__attr_""slope""__chunk_len_10__f_agg_""mean""",0.00281904672397228
+mhl_mean__c3__lag_2,0.0028130890832284983
+loglikelihood__time_reversal_asymmetry_statistic__lag_1,0.0028085685248629504
+"d_mean__agg_linear_trend__attr_""intercept""__chunk_len_10__f_agg_""var""",0.002797500955326004
+ps_norm__quantile__q_0.1,0.0027972679450414613
+loglikelihood__time_reversal_asymmetry_statistic__lag_2,0.0027686566077170277
+"d_norm__change_quantiles__f_agg_""mean""__isabs_True__qh_1.0__ql_0.4",0.002753027592601228
+"ps_norm__cwt_coefficients__coeff_1__w_10__widths_(2, 5, 10, 20)",0.0027372010789097245
+"mhl_mean__agg_linear_trend__attr_""intercept""__chunk_len_50__f_agg_""mean""",0.0026929863130582773
+sigma__abs_energy,0.002661914583815873
+"pc_mean__agg_linear_trend__attr_""intercept""__chunk_len_10__f_agg_""mean""",0.0026523353658026013
+d_mean__energy_ratio_by_chunks__num_segments_10__segment_focus_0,0.002637529581730684
+"d_norm__agg_linear_trend__attr_""intercept""__chunk_len_5__f_agg_""min""",0.0026152088149372196
+d_norm__mean_abs_change,0.0025575586330659735
+"d_norm__agg_linear_trend__attr_""intercept""__chunk_len_10__f_agg_""min""",0.002556843852784476
+"d_mean__change_quantiles__f_agg_""mean""__isabs_True__qh_0.8__ql_0.0",0.0025250141326505354
+"d_norm__agg_linear_trend__attr_""slope""__chunk_len_10__f_agg_""max""",0.0024807383481794745
+"d_mean__agg_linear_trend__attr_""intercept""__chunk_len_50__f_agg_""min""",0.0024778074428681387
+d_mean__index_mass_quantile__q_0.8,0.002468210846941656
+"d_norm__agg_linear_trend__attr_""slope""__chunk_len_5__f_agg_""max""",0.0024476299493402832
+mhl_mean__quantile__q_0.2,0.0024105709554570628
+mhl_mean__quantile__q_0.1,0.002383577492463657
+d_mean__energy_ratio_by_chunks__num_segments_10__segment_focus_7,0.0023650856308552745
+loglikelihood__mean_n_absolute_max__number_of_maxima_7,0.002359791943660168
+mhl_mean__mean,0.0023321184657491877
+loglikelihood__maximum,0.0023258515436700416
+"d_mean__change_quantiles__f_agg_""var""__isabs_False__qh_1.0__ql_0.0",0.0023192794525419566
+d_mean__cid_ce__normalize_False,0.0023028464495989352
+"sigma__cwt_coefficients__coeff_9__w_20__widths_(2, 5, 10, 20)",0.002301495814645123
+loglikelihood__quantile__q_0.2,0.002285593246223519
+d_mean__c3__lag_1,0.0022759721453606387
+"d_mean__fft_coefficient__attr_""real""__coeff_36",0.0022710386325587883
+"d_norm__change_quantiles__f_agg_""mean""__isabs_False__qh_1.0__ql_0.4",0.0022472069512692885
+"sigma__cwt_coefficients__coeff_10__w_10__widths_(2, 5, 10, 20)",0.0022440707050247646
+"pc_norm__fft_coefficient__attr_""real""__coeff_0",0.0022387698961309713
+sigma__variance,0.0022244397418996384
+"d_mean__fft_coefficient__attr_""abs""__coeff_15",0.0022157088848601455
+d_mean__quantile__q_0.7,0.0022114185972666863
+"d_norm__fft_coefficient__attr_""abs""__coeff_26",0.0021263402534264773
+"sigma__cwt_coefficients__coeff_1__w_20__widths_(2, 5, 10, 20)",0.002118031594553343
+"d_mean__agg_linear_trend__attr_""slope""__chunk_len_10__f_agg_""mean""",0.0021143900583529213
+"d_norm__cwt_coefficients__coeff_1__w_20__widths_(2, 5, 10, 20)",0.002097217004961655
+"sigma__cwt_coefficients__coeff_7__w_10__widths_(2, 5, 10, 20)",0.0020511178522050195
+"mhl_mean__agg_linear_trend__attr_""intercept""__chunk_len_10__f_agg_""mean""",0.0020432538208940325
+"sigma__cwt_coefficients__coeff_13__w_10__widths_(2, 5, 10, 20)",0.0020399095936613457
+"d_mean__fft_coefficient__attr_""real""__coeff_37",0.002038206949917744
+d_norm__index_mass_quantile__q_0.3,0.0020262300440679892
