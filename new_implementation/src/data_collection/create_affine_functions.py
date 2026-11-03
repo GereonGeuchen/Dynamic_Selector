@@ -1,3 +1,5 @@
+"""Utilities for constructing IOH ManyAffine benchmark functions."""
+
 import matplotlib.pyplot as plt
 import ioh
 import numpy as np

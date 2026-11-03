@@ -29,7 +29,10 @@ from pathlib import Path
 
 # Import the algorithms to be used in A2
 from optimisation_algorithms import BFGS, DE, MLSL, PSO
-from create_affine_functions import create_affine_function, generate_weights
+from data_collection.create_affine_functions import (
+    create_affine_function,
+    generate_weights,
+)
 
 # Import ELA feature calculation functions
 from pflacco.classical_ela_features import (

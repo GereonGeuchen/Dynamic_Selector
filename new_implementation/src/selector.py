@@ -47,6 +47,17 @@ SELECTION_TRAINING_DATA_FOLDER = "selection_model_training_data"
 SWITCHING_TRAINING_DATA_FOLDER = "switching_model_training_data"
 LOOKAHEAD_TRAINING_DATA_FOLDER = "lookahead_model_training_data"
 SWITCHING_MODELS_FOLDER = "switching_models"
+FEATURE_STUDIES = {"ela", "ela_internal_state", "internal_state"}
+
+
+def validate_feature_study(feature_study: str) -> str:
+    """Validate and return one of the supported predictor-source studies."""
+    if feature_study not in FEATURE_STUDIES:
+        raise ValueError(
+            f"Unknown feature study {feature_study!r}; expected one of "
+            f"{sorted(FEATURE_STUDIES)}."
+        )
+    return feature_study
 
 
 def configure_experiment(dimension: int, metric: str) -> None:
@@ -69,6 +80,15 @@ def metric_scoped_path(base_path: str) -> str:
     if os.path.basename(normalized) == METRIC:
         return normalized
     return os.path.join(base_path, METRIC)
+
+
+def study_scoped_path(base_path: str, feature_study: str) -> str:
+    """Return a study-specific path below a metric-scoped artifact directory."""
+    feature_study = validate_feature_study(feature_study)
+    normalized = os.path.normpath(base_path)
+    if os.path.basename(normalized) == feature_study:
+        return normalized
+    return os.path.join(normalized, feature_study)
 
 
 def dimension_directory_name(dataset: str = "default") -> str:
@@ -122,6 +142,22 @@ def training_metric_path_from_run_data(run_data_directory: str) -> str:
     )
     return metric_scoped_path(training_data_path(dataset_path))
 
+
+def internal_state_feature_matrix_path(run_data_directory: str, budget: int) -> str:
+    """Return the selected tsfresh matrix for one A1 budget."""
+    normalized = os.path.normpath(run_data_directory)
+    dataset_path = (
+        os.path.dirname(normalized)
+        if os.path.basename(normalized) == "run_data"
+        else normalized
+    )
+    return os.path.join(
+        training_data_path(dataset_path),
+        "internal_state_features",
+        "feature_matrices",
+        f"selected_feature_matrix_B{budget}.csv",
+    )
+
 # Path helpers encode the file naming convention created by data_collection.py.
 def achieved_metric_path(data_path: str, algorithm: str, budget: int) -> str:
     return os.path.join(data_path, f"achieved_{METRIC}s/achieved_{METRIC}s_{algorithm}_B{budget}_{DIM}D.csv")
@@ -129,14 +165,14 @@ def achieved_metric_path(data_path: str, algorithm: str, budget: int) -> str:
 def ela_features_path(data_path: str, algorithm: str, budget: int) -> str:
     return os.path.join(data_path, f"ela_features/{algorithm}_B{budget}_{DIM}D/ELA_features.csv")
 
-def selection_training_data_path(data_path: str, budget: int) -> str:
-    return os.path.join(data_path, SELECTION_TRAINING_DATA_FOLDER, f"selection_model_training_data_budget_{budget}.csv")
+def selection_training_data_path(data_path: str, budget: int, feature_study: str = "ela") -> str:
+    return os.path.join(study_scoped_path(data_path, feature_study), SELECTION_TRAINING_DATA_FOLDER, f"selection_model_training_data_budget_{budget}.csv")
 
-def switching_training_data_path(data_path: str, budget: int) -> str:
-    return os.path.join(data_path, SWITCHING_TRAINING_DATA_FOLDER, f"switching_model_training_data_budget_{budget}.csv")
+def switching_training_data_path(data_path: str, budget: int, feature_study: str = "ela") -> str:
+    return os.path.join(study_scoped_path(data_path, feature_study), SWITCHING_TRAINING_DATA_FOLDER, f"switching_model_training_data_budget_{budget}.csv")
 
-def lookahead_training_data_path(data_path: str, budget: int) -> str:
-    return os.path.join(data_path, LOOKAHEAD_TRAINING_DATA_FOLDER, f"lookahead_model_training_data_budget_{budget}.csv")
+def lookahead_training_data_path(data_path: str, budget: int, feature_study: str = "ela") -> str:
+    return os.path.join(study_scoped_path(data_path, feature_study), LOOKAHEAD_TRAINING_DATA_FOLDER, f"lookahead_model_training_data_budget_{budget}.csv")
 
 def is_no_switch_algorithm(algorithm: str) -> bool:
     return algorithm == NO_SWITCH_ALGORITHM
@@ -188,6 +224,57 @@ def switching_model_variant_path(model_path: str, budget: int, lookahead_count: 
 def drop_all_nan_ela_columns(ela_features: pd.DataFrame) -> pd.DataFrame:
     """Remove ELA columns that are entirely missing in the dataframe."""
     return ela_features.dropna(axis=1, how="all")
+
+
+def load_predictor_features(
+    run_data_directory: str, budget: int, feature_study: str
+) -> pd.DataFrame:
+    """Load the requested ELA and/or internal-state predictors for one budget.
+
+    The returned dataframe always starts with ``KEY_COLS``. Internal-state
+    columns are prefixed with ``is__`` so their provenance is explicit and
+    collisions with ELA column names are impossible.
+    """
+    feature_study = validate_feature_study(feature_study)
+    sources: list[pd.DataFrame] = []
+
+    if feature_study in {"ela", "ela_internal_state"}:
+        ela = pd.read_csv(
+            ela_features_path(run_data_directory, NO_SWITCH_ALGORITHM, TOTAL_BUDGET)
+        )
+        ela = ela[ela["ela_budget"] == budget].copy()
+        ela = ela.drop(
+            columns=[
+                column for column in ("a1_budget", "ela_budget", "a2_algorithm", "high_level_category")
+                if column in ela.columns
+            ]
+        )
+        ela = drop_all_nan_ela_columns(ela)
+        sources.append(ela)
+
+    if feature_study in {"internal_state", "ela_internal_state"}:
+        matrix_path = internal_state_feature_matrix_path(run_data_directory, budget)
+        if not os.path.exists(matrix_path):
+            raise FileNotFoundError(
+                f"Internal-state feature matrix for budget {budget} was not found: "
+                f"{matrix_path}"
+            )
+        internal_state = pd.read_csv(matrix_path)
+        missing_keys = set(KEY_COLS) - set(internal_state.columns)
+        if missing_keys:
+            raise ValueError(
+                f"Internal-state feature matrix {matrix_path} is missing keys: "
+                f"{sorted(missing_keys)}"
+            )
+        internal_state = internal_state.drop(columns=["budget"], errors="ignore")
+        internal_state = internal_state.rename(
+            columns={column: f"is__{column}" for column in internal_state.columns if column not in KEY_COLS}
+        )
+        sources.append(internal_state)
+
+    if len(sources) == 1:
+        return sources[0]
+    return sources[0].merge(sources[1], on=KEY_COLS, how="inner", validate="one_to_one")
 
 def train_lookahead_models(lookahead_model_training_data: pd.DataFrame) -> dict:
     # One regressor is trained per lookahead target t_0, t_1, ...
@@ -254,8 +341,8 @@ def make_default_wrapper_model(wrapper_type: str = "RandomForestClassifierWrappe
 
 def normalise_selection_model_data(selection_model_data) -> tuple[pd.DataFrame, MinMaxScaler]:
     """
-    Normalises the ELA features in the selection model data using min-max normalisation between 0 and 1 across all functions 
-    for the ELA features, and between 1e-12 and 1 across all algorithms for each function.
+    Normalises all predictor features in the selection model data using min-max
+    normalisation between 0 and 1, and target metrics between 1e-12 and 1.
 
     Parameters
     ----------
@@ -266,12 +353,12 @@ def normalise_selection_model_data(selection_model_data) -> tuple[pd.DataFrame, 
     -------
     normalised_selection_model_data: dict
         A dictionary with the same structure as selection_model_data, but with the ELA features normalised.
-    ela_scaler: MinMaxScaler
-        The fitted MinMaxScaler used to normalise the ELA features, which can be used to normalise the ELA features of the test instances in the same way as the training data.
+    feature_scaler: MinMaxScaler
+        The fitted MinMaxScaler used to normalise predictor features.
     """
 
     algo_cols = A2_ALGORITHMS
-    ela_feature_cols = selection_feature_cols(selection_model_data)
+    feature_cols = selection_feature_cols(selection_model_data)
     
     normalised_selection_model_data = selection_model_data.copy()
 
@@ -285,14 +372,17 @@ def normalise_selection_model_data(selection_model_data) -> tuple[pd.DataFrame, 
         flat_scaled = scaler.fit_transform(flat_vals).flatten()
         normalised_selection_model_data.loc[idx, algo_cols] = flat_scaled.reshape(algo_matrix.shape)
 
-    # Normalise ELA feature cols
+    feature_scaler = MinMaxScaler()
+    normalised_selection_model_data[feature_cols] = feature_scaler.fit_transform(normalised_selection_model_data[feature_cols])
 
-    ela_scaler = MinMaxScaler()
-    normalised_selection_model_data[ela_feature_cols] = ela_scaler.fit_transform(normalised_selection_model_data[ela_feature_cols])
+    return normalised_selection_model_data, feature_scaler
 
-    return normalised_selection_model_data, ela_scaler
-
-def create_selection_model_data(data_path: str, switching_budgets: list, store_data: bool = False):
+def create_selection_model_data(
+    data_path: str,
+    switching_budgets: list,
+    store_data: bool = False,
+    feature_study: str = "ela",
+):
     """
     Creates the data for training the selection model. It reads the ELA features and achieved metric values from data_collection.py,
     and matches the ELA features with the corresponding metric values according to
@@ -314,11 +404,9 @@ def create_selection_model_data(data_path: str, switching_budgets: list, store_d
     selection_model_data: dict
         A dictionary where the keys are the switching budgets and the values are the corresponding selection model data as pandas DataFrames.
     """
+    feature_study = validate_feature_study(feature_study)
     selection_model_data = {}
-    ela_scalers = {}
-
-    # We load the ELA features based on which we switch. These are the features generated by the A1 algorithm, namely Non-elitist CMA-ES
-    ela_features = drop_all_nan_ela_columns(pd.read_csv(ela_features_path(data_path, NO_SWITCH_ALGORITHM, TOTAL_BUDGET)))
+    feature_scalers = {}
     for budget in switching_budgets:
         if budget == TOTAL_BUDGET: continue
 
@@ -340,19 +428,12 @@ def create_selection_model_data(data_path: str, switching_budgets: list, store_d
             .reset_index()
         )
 
-
-        ela_features_subset = ela_features[ela_features["ela_budget"] == budget].copy()
-
-        # remove non-feature columns you do not want in final data
-        drop_cols = ["a1_budget", "ela_budget", "a2_algorithm"]
-        ela_features_subset = ela_features_subset.drop(
-            columns=[c for c in drop_cols if c in ela_features_subset.columns]
-        )
-
-        selection_model_data_budget = ela_features_subset.merge(
+        predictor_features = load_predictor_features(data_path, budget, feature_study)
+        selection_model_data_budget = predictor_features.merge(
             metrics_wide,
             on=KEY_COLS,
-            how="inner"
+            how="inner",
+            validate="one_to_one",
         )
 
         # Drop all rows in which iid is not in the training set
@@ -363,22 +444,21 @@ def create_selection_model_data(data_path: str, switching_budgets: list, store_d
 
         selection_model_data[budget] = selection_model_data_budget
 
-        selection_model_data[budget], ela_scalers[budget] = normalise_selection_model_data(selection_model_data_budget)
+        selection_model_data[budget], feature_scalers[budget] = normalise_selection_model_data(selection_model_data_budget)
 
         if store_data:
-            output_path = os.path.join(
-                training_metric_path_from_run_data(data_path),
-                SELECTION_TRAINING_DATA_FOLDER,
+            budget_output_path = selection_training_data_path(
+                training_metric_path_from_run_data(data_path), budget, feature_study
             )
+            output_path = os.path.dirname(budget_output_path)
             os.makedirs(output_path, exist_ok=True)
-            budget_output_path = os.path.join(output_path, f"selection_model_training_data_budget_{budget}.csv")
             selection_model_data[budget].to_csv(budget_output_path, index=False)
             print(f"Selection model training data for budget {budget} saved to {budget_output_path}")
 
-    return selection_model_data, ela_scalers
+    return selection_model_data, feature_scalers
 
 def get_crossvalidated_predictions(selection_model_training_data: dict, store: bool = False, data_output_path: str = "./data",
-                                   no_switch_metric_path: str | None = None) -> pd.DataFrame:
+                                   no_switch_metric_path: str | None = None, feature_study: str = "ela") -> pd.DataFrame:
     """
     Performs leave-one-instance-out cross-validation for each switching budget, and returns a DataFrame containing the predictions and actual metric values for each (fid, iid, rep) and switching budget.
     
@@ -503,7 +583,7 @@ def get_crossvalidated_predictions(selection_model_training_data: dict, store: b
     res = res.sort_values(by=KEY_COLS + ["budget"]).reset_index(drop=True)
 
     if store:
-        output_dir = metric_scoped_path(data_output_path)
+        output_dir = study_scoped_path(data_output_path, feature_study)
         output_path = os.path.join(output_dir, "crossvalidated_predictions.csv")
 
         os.makedirs(output_dir, exist_ok=True)
@@ -513,7 +593,7 @@ def get_crossvalidated_predictions(selection_model_training_data: dict, store: b
 
     return res
 
-def find_optimal_budgets_per_run(crossvalidated_predictions: pd.DataFrame, tie_breaking_strategy: str = "highest_budget", store: bool = False, data_output_path: str = "./data") -> dict:
+def find_optimal_budgets_per_run(crossvalidated_predictions: pd.DataFrame, tie_breaking_strategy: str = "highest_budget", store: bool = False, data_output_path: str = "./data", feature_study: str = "ela") -> dict:
     """
     For each (fid, iid, rep), we find the budget where the actual metric is lowest across all budgets for that (fid,iid,rep).
     If there are ties, we select the budget according to the specified tie-breaking strategy.
@@ -547,7 +627,8 @@ def find_optimal_budgets_per_run(crossvalidated_predictions: pd.DataFrame, tie_b
         optimal_budgets[(fid, iid, rep)] = selected_budget
 
     if store:
-        output_path = os.path.join(data_output_path, "optimal_budgets.csv")
+        output_path = os.path.join(study_scoped_path(data_output_path, feature_study), "optimal_budgets.csv")
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
         pd.DataFrame([
             {"fid": fid, "iid": iid, "rep": rep, "optimal_budget": budget}
             for (fid, iid, rep), budget in optimal_budgets.items()
@@ -632,7 +713,8 @@ def get_crossvalidated_lookahead_predictions(lookahead_model_training_data: pd.D
     return res
 
 def create_switch_model_data(selection_model_training_data: dict[int, pd.DataFrame], lookahead_model_training_data: dict[int, pd.DataFrame], tie_breaking_strategy: str = "highest_budget", store_final_data: bool = True, data_output_path: str = "./data", 
-                             store_crossvalidated_predictions: bool = True, store_optimal_budgets: bool = True, no_switch_metric_path: str | None = None) -> pd.DataFrame:
+                             store_crossvalidated_predictions: bool = True, store_optimal_budgets: bool = True, no_switch_metric_path: str | None = None,
+                             feature_study: str = "ela") -> pd.DataFrame:
     """
     Creates switching-model training data using leave-one-instance-out CV.
  
@@ -670,11 +752,12 @@ def create_switch_model_data(selection_model_training_data: dict[int, pd.DataFra
         store=store_crossvalidated_predictions,
         data_output_path=data_output_path,
         no_switch_metric_path=no_switch_metric_path,
+        feature_study=feature_study,
     )
 
 
 
-    optimal_budgets_per_run = find_optimal_budgets_per_run(crossvalidated_predictions, tie_breaking_strategy=tie_breaking_strategy, store=store_optimal_budgets, data_output_path=data_output_path)
+    optimal_budgets_per_run = find_optimal_budgets_per_run(crossvalidated_predictions, tie_breaking_strategy=tie_breaking_strategy, store=store_optimal_budgets, data_output_path=data_output_path, feature_study=feature_study)
 
     for switching_budget in switching_budgets:
         switching_model_training_data[switching_budget] = selection_model_training_data[switching_budget].copy()
@@ -700,17 +783,17 @@ def create_switch_model_data(selection_model_training_data: dict[int, pd.DataFra
         )
 
     if store_final_data:   
-        output_path = os.path.join(data_output_path, SWITCHING_TRAINING_DATA_FOLDER)
+        output_path = os.path.dirname(switching_training_data_path(data_output_path, next(iter(switching_model_training_data)), feature_study))
         os.makedirs(output_path, exist_ok=True)
 
         for budget, df in switching_model_training_data.items():
-            budget_output_path = switching_training_data_path(data_output_path, budget)
+            budget_output_path = switching_training_data_path(data_output_path, budget, feature_study)
             df.to_csv(budget_output_path, index=False)
             print(f"Switching model training data for budget {budget} saved to {budget_output_path}")
 
     return switching_model_training_data
 
-def create_lookahead_model_data(selection_model_training_data: dict[int, pd.DataFrame], normalize_lookahead_performances: bool = True, store_final_data: bool = True, data_output_path: str = "./data") -> dict[int, pd.DataFrame]:
+def create_lookahead_model_data(selection_model_training_data: dict[int, pd.DataFrame], normalize_lookahead_performances: bool = True, store_final_data: bool = True, data_output_path: str = "./data", feature_study: str = "ela") -> dict[int, pd.DataFrame]:
     """
     Creates lookahead-model training data using leave-one-instance-out CV.
  
@@ -802,19 +885,22 @@ def create_lookahead_model_data(selection_model_training_data: dict[int, pd.Data
         lookahead_model_training_data[budget] = lookahead_model_data_budget
 
         if store_final_data:
-            output_path = os.path.join(
-                training_metric_path_from_run_data(data_output_path),
-                LOOKAHEAD_TRAINING_DATA_FOLDER,
+            output_path = os.path.dirname(
+                lookahead_training_data_path(
+                    training_metric_path_from_run_data(data_output_path), budget, feature_study
+                )
             )
             os.makedirs(output_path, exist_ok=True)
-            budget_output_path = os.path.join(output_path, f"lookahead_model_training_data_budget_{budget}.csv")
+            budget_output_path = lookahead_training_data_path(
+                training_metric_path_from_run_data(data_output_path), budget, feature_study
+            )
             lookahead_model_training_data[budget].to_csv(budget_output_path, index=False)
             print(f"Lookahead model training data for budget {budget} saved to {budget_output_path}")
 
     return lookahead_model_training_data
 
 class DynamicSelector:
-    def __init__(self, switching_budgets: list = SWITCHING_BUDGETS, data_path: str = "./data", results_path: str = "./results", model_path: str = "./models", load_models: bool = False, dataset: str = "default", model_dataset: str | None = None):
+    def __init__(self, switching_budgets: list = SWITCHING_BUDGETS, data_path: str = "./data", results_path: str = "./results", model_path: str = "./models", load_models: bool = False, dataset: str = "default", model_dataset: str | None = None, feature_study: str = "ela"):
         """
         Initializes the DynamicSelector.
 
@@ -838,17 +924,18 @@ class DynamicSelector:
             it is the same as ``dataset``. When it differs, results are stored
             under ``dim_<DIM>_<dataset>_models_<model_dataset>``.
         """
+        self.feature_study = validate_feature_study(feature_study)
         if model_dataset is None:
             model_dataset = dataset
         result_directory = result_directory_name(dataset)
         if model_dataset != dataset:
             result_directory = f"{result_directory}_models_{model_dataset}"
-        self.results_path = metric_scoped_path(os.path.join(results_path, result_directory))
+        self.results_path = study_scoped_path(metric_scoped_path(os.path.join(results_path, result_directory)), self.feature_study)
         self.switching_budgets = list(switching_budgets)
         dataset_path = dimension_scoped_path(data_path, dataset)
         self.raw_data_path = run_data_path(dataset_path)
-        self.data_path = metric_scoped_path(training_data_path(dataset_path))
-        self.model_path = metric_scoped_path(dimension_scoped_path(model_path, model_dataset))
+        self.data_path = study_scoped_path(metric_scoped_path(training_data_path(dataset_path)), self.feature_study)
+        self.model_path = study_scoped_path(metric_scoped_path(dimension_scoped_path(model_path, model_dataset)), self.feature_study)
         
         if load_models:
             self.models = self.load_models_from_folder()
@@ -858,7 +945,7 @@ class DynamicSelector:
                     "selection_model": None,
                     "switching_models": {},
                     "lookahead_models": None,
-                    "ela_scaler": None,
+                    "feature_scaler": None,
                 }
                 for budget in switching_budgets
             }
@@ -871,7 +958,8 @@ class DynamicSelector:
             budget_path = os.path.join(self.model_path, f"budget_{budget}")
             selection_model_path = os.path.join(budget_path, "selection_model.joblib")
             lookahead_models_path = os.path.join(budget_path, "lookahead_models.joblib")
-            ela_scaler_path = os.path.join(budget_path, f"ela_scaler.joblib")
+            feature_scaler_path = os.path.join(budget_path, "feature_scaler.joblib")
+            feature_columns_path = os.path.join(budget_path, "feature_columns.joblib")
             switching_model_base_path = os.path.join(budget_path, SWITCHING_MODELS_FOLDER)
 
             if not os.path.exists(selection_model_path) or not os.path.exists(lookahead_models_path):
@@ -885,7 +973,8 @@ class DynamicSelector:
 
             selection_model = joblib.load(selection_model_path)
             lookahead_models = joblib.load(lookahead_models_path)
-            ela_scaler = joblib.load(ela_scaler_path)
+            feature_scaler = joblib.load(feature_scaler_path)
+            feature_columns = joblib.load(feature_columns_path)
             switching_models = {}
 
             for lookahead_count in range(MAX_LOOKAHEAD_COUNT + 1):
@@ -904,7 +993,8 @@ class DynamicSelector:
                 "selection_model": selection_model,
                 "switching_models": switching_models,
                 "lookahead_models": lookahead_models,
-                "ela_scaler": ela_scaler,
+                "feature_scaler": feature_scaler,
+                "feature_columns": feature_columns,
             }
 
             print(f"Models for budget {budget} loaded successfully")
@@ -914,8 +1004,8 @@ class DynamicSelector:
     def train_models(self, training_data_is_stored: bool = False):
         
         if not training_data_is_stored:
-            selection_model_training_data, ela_scalers = create_selection_model_data(data_path=self.raw_data_path, switching_budgets=self.switching_budgets, store_data=True)
-            lookahead_model_training_data = create_lookahead_model_data(selection_model_training_data, normalize_lookahead_performances=True, store_final_data=True, data_output_path=self.raw_data_path)
+            selection_model_training_data, feature_scalers = create_selection_model_data(data_path=self.raw_data_path, switching_budgets=self.switching_budgets, store_data=True, feature_study=self.feature_study)
+            lookahead_model_training_data = create_lookahead_model_data(selection_model_training_data, normalize_lookahead_performances=True, store_final_data=True, data_output_path=self.raw_data_path, feature_study=self.feature_study)
             switching_model_training_data = create_switch_model_data(
                 selection_model_training_data,
                 lookahead_model_training_data,
@@ -925,46 +1015,48 @@ class DynamicSelector:
                 store_final_data=True,
                 data_output_path=self.data_path,
                 no_switch_metric_path=achieved_metric_path(self.raw_data_path, NO_SWITCH_ALGORITHM, TOTAL_BUDGET),
+                feature_study=self.feature_study,
             )
         else:
             selection_model_training_data = {}
             lookahead_model_training_data = {}
             switching_model_training_data = {}
-            ela_scalers = {}
+            feature_scalers = {}
 
             missing_scalers = []
             for budget in self.switching_budgets:
                 if budget == TOTAL_BUDGET:
                     continue
-                scaler_path = os.path.join(self.model_path, f"budget_{budget}/ela_scaler.joblib")
+                scaler_path = os.path.join(self.model_path, f"budget_{budget}/feature_scaler.joblib")
                 if not os.path.exists(scaler_path):
                     missing_scalers.append(budget)
 
             # It might happen that the selection training data is stored, but the scalers are not. In that case, we need to rebuild the selection training data and scalers.
             if missing_scalers:
                 print(
-                    "ELA scalers are missing for budgets "
+                    "Feature scalers are missing for budgets "
                     f"{missing_scalers}. Rebuilding selection training data and scalers..."
                 )
-                _, ela_scalers = create_selection_model_data(
+                _, feature_scalers = create_selection_model_data(
                     data_path=self.raw_data_path,
                     switching_budgets=self.switching_budgets,
                     store_data=False,
+                    feature_study=self.feature_study,
                 )
             else:
                 for budget in self.switching_budgets:
                     if budget == TOTAL_BUDGET: continue
-                    ela_scalers[budget] = joblib.load(os.path.join(self.model_path, f"budget_{budget}/ela_scaler.joblib"))
+                    feature_scalers[budget] = joblib.load(os.path.join(self.model_path, f"budget_{budget}/feature_scaler.joblib"))
 
             for budget in self.switching_budgets:
                 if budget == TOTAL_BUDGET: continue
-                selection_model_training_data[budget] = pd.read_csv(selection_training_data_path(self.data_path, budget))
+                selection_model_training_data[budget] = pd.read_csv(selection_training_data_path(self.data_path, budget, self.feature_study))
 
 
             for budget in self.switching_budgets:
                 if budget == TOTAL_BUDGET: continue
-                lookahead_model_training_data[budget] = pd.read_csv(lookahead_training_data_path(self.data_path, budget))
-                switching_model_training_data[budget] = pd.read_csv(switching_training_data_path(self.data_path, budget))
+                lookahead_model_training_data[budget] = pd.read_csv(lookahead_training_data_path(self.data_path, budget, self.feature_study))
+                switching_model_training_data[budget] = pd.read_csv(switching_training_data_path(self.data_path, budget, self.feature_study))
 
         max_lookahead_count = MAX_LOOKAHEAD_COUNT
 
@@ -1021,7 +1113,8 @@ class DynamicSelector:
                     os.path.join(variant_budget_path, "switching_model.joblib"),
                 )
                     
-            self.models[budget]["ela_scaler"] = ela_scalers[budget]
+            self.models[budget]["feature_scaler"] = feature_scalers[budget]
+            self.models[budget]["feature_columns"] = selection_feature_cols(selection_model_train_data)
 
             model_budget_path = os.path.join(self.model_path, f"budget_{budget}")
             os.makedirs(model_budget_path, exist_ok=True)
@@ -1029,9 +1122,32 @@ class DynamicSelector:
             joblib.dump(selector, os.path.join(model_budget_path, "selection_model.joblib"))
             joblib.dump(lookahead_models, os.path.join(model_budget_path, "lookahead_models.joblib"))
 
-            joblib.dump(self.models[budget]["ela_scaler"], os.path.join(model_budget_path, f"ela_scaler.joblib"))
+            joblib.dump(self.models[budget]["feature_scaler"], os.path.join(model_budget_path, "feature_scaler.joblib"))
+            joblib.dump(self.models[budget]["feature_columns"], os.path.join(model_budget_path, "feature_columns.joblib"))
 
-    def simulate_single_run(self, fid: int, iid: int, rep: int, ela_rep: pd.DataFrame, metrics: pd.DataFrame, lookahead_count: int) -> dict:
+    def _scaled_feature_row(
+        self, budget: int, feature_table: pd.DataFrame, fid: int, iid: int, rep: int
+    ) -> pd.DataFrame:
+        """Return one persisted-study feature row in the model's column order."""
+        row = feature_table[
+            (feature_table["fid"] == fid)
+            & (feature_table["iid"] == iid)
+            & (feature_table["rep"] == rep)
+        ]
+        if len(row) != 1:
+            raise ValueError(
+                f"Expected one {self.feature_study} feature row for "
+                f"(fid={fid}, iid={iid}, rep={rep}, budget={budget}); found {len(row)}."
+            )
+        feature_columns = self.models[budget]["feature_columns"]
+        missing = set(feature_columns) - set(row.columns)
+        if missing:
+            raise ValueError(f"Feature row for budget {budget} is missing columns: {sorted(missing)}")
+        row = row[feature_columns]
+        scaled = self.models[budget]["feature_scaler"].transform(row)
+        return pd.DataFrame(scaled, columns=feature_columns, index=[(fid, iid, rep)])
+
+    def simulate_single_run(self, fid: int, iid: int, rep: int, feature_tables: dict[int, pd.DataFrame], metrics: pd.DataFrame, lookahead_count: int) -> dict:
         """
         Simulates a single run of the dynamic selector on a given instance, and returns the results.
 
@@ -1060,15 +1176,8 @@ class DynamicSelector:
 
         for budget in self.switching_budgets:
             if budget == TOTAL_BUDGET: continue
-            ela_row = ela_rep[ela_rep["ela_budget"] == budget].drop(columns=["ela_budget"])
-
-            ela_row = drop_all_nan_ela_columns(ela_row)
-            # Use the scaler fitted on the selection-model training data for this budget.
-            ela_scaler = self.models[budget]["ela_scaler"]
-            ela_features = pd.DataFrame(
-                ela_scaler.transform(ela_row),
-                columns=ela_row.columns,
-                index=[(fid, iid, rep)]
+            predictor_features = self._scaled_feature_row(
+                budget, feature_tables[budget], fid, iid, rep
             )
 
             switching_models = self.models[budget]["switching_models"]
@@ -1080,7 +1189,7 @@ class DynamicSelector:
             switching_model = switching_models[lookahead_count]
             lookahead_models = self.models[budget]["lookahead_models"]
             switching_features = add_lookahead_predictions(
-                ela_features, lookahead_models, lookahead_count
+                predictor_features, lookahead_models, lookahead_count
             )
            
             switch_decision = switching_model.predict(switching_features)[0]
@@ -1088,7 +1197,7 @@ class DynamicSelector:
             if switch_decision:
                 # Once the switch model says "now", the selection model chooses the A2 algorithm.
                 selection_model = self.models[budget]["selection_model"]
-                algo_predicion = selection_model.predict(ela_features)
+                algo_predicion = selection_model.predict(predictor_features)
                 predicted_algo = list(algo_predicion.values())[0][0][0]
                 print(f"Switch decision: {switch_decision}, predicted algorithm: {predicted_algo}")
                 achieved_metric = get_metric_value(metrics, fid, iid, rep, predicted_algo, budget)
@@ -1133,7 +1242,7 @@ class DynamicSelector:
                 self.models[budget]["selection_model"] is None
                 or not self.models[budget]["switching_models"]
                 or self.models[budget]["lookahead_models"] is None
-                or self.models[budget]["ela_scaler"] is None
+                or self.models[budget]["feature_scaler"] is None
             ):
                 raise ValueError(f"Models for budget {budget} are not loaded. Models must be trained and loaded before evaluation.")
             if lookahead_count not in self.models[budget]["switching_models"]:
@@ -1158,9 +1267,13 @@ class DynamicSelector:
             ignore_index=True,
         )
 
-        ela_features = pd.read_csv(ela_features_path(self.raw_data_path, NO_SWITCH_ALGORITHM, TOTAL_BUDGET))
-        # Only keep rows where iid is in the test set
-        ela_features = ela_features[ela_features["iid"].isin(TEST_IIDS)]
+        feature_tables = {
+            budget: load_predictor_features(self.raw_data_path, budget, self.feature_study)
+            for budget in self.switching_budgets
+            if budget != TOTAL_BUDGET
+        }
+        for budget in feature_tables:
+            feature_tables[budget] = feature_tables[budget][feature_tables[budget]["iid"].isin(TEST_IIDS)]
 
         result_path_with_lookahead_count = os.path.join(
             self.results_path,
@@ -1178,32 +1291,18 @@ class DynamicSelector:
             for iid in TEST_IIDS:
                 for rep in range(0, 20):
                     print(f"Evaluating on fid {fid}, iid {iid}, rep {rep}...")
-                    # Get the ELA features for this (fid, iid, rep)
-                    ela_features_rep = ela_features[
-                        (ela_features["fid"] == fid) &
-                        (ela_features["iid"] == iid) &
-                        (ela_features["rep"] == rep)
-                    ].drop(columns=["a1_budget", "a2_algorithm"] + META_COLS)
-
                     result = self.simulate_single_run(
-                        fid, iid, rep, ela_features_rep, metrics, lookahead_count
+                        fid, iid, rep, feature_tables, metrics, lookahead_count
                     )
 
                     # Collect predictions of static selection models
                     for budget in self.switching_budgets:
                         if budget == TOTAL_BUDGET: continue
                         selector = self.models[budget]["selection_model"]
-                        ela_row = ela_features_rep[ela_features_rep["ela_budget"] == budget].drop(columns=["ela_budget"])
-
-                        ela_row = drop_all_nan_ela_columns(ela_row)
-
-                        ela_features_scaled = self.models[budget]["ela_scaler"].transform(ela_row)
-                        ela_features_scaled = pd.DataFrame(
-                            ela_features_scaled,
-                            columns=ela_row.columns,
-                            index=[(fid, iid, rep)]
+                        predictor_features = self._scaled_feature_row(
+                            budget, feature_tables[budget], fid, iid, rep
                         )
-                        algo_prediction = selector.predict(ela_features_scaled)
+                        algo_prediction = selector.predict(predictor_features)
                         predicted_algo = list(algo_prediction.values())[0][0][0]
                         algo_metric = get_metric_value(metrics, fid, iid, rep, predicted_algo, budget)
 
@@ -1217,10 +1316,11 @@ class DynamicSelector:
 
 # Builds switching-model training data, reusing stored selection and lookahead
 # tables when available and rebuilding/storing any missing intermediate tables.
-def build_training_data(data_path: str, dataset: str = "default") -> None:
+def build_training_data(data_path: str, dataset: str = "default", feature_study: str = "ela") -> None:
+    feature_study = validate_feature_study(feature_study)
     dataset_path = dimension_scoped_path(data_path, dataset)
     raw_data_path = run_data_path(dataset_path)
-    data_path = metric_scoped_path(training_data_path(dataset_path))
+    data_path = study_scoped_path(metric_scoped_path(training_data_path(dataset_path)), feature_study)
     selection_model_training_data = {}
     lookahead_model_training_data = {}
 
@@ -1228,8 +1328,8 @@ def build_training_data(data_path: str, dataset: str = "default") -> None:
     missing_lookahead_files = []
 
     for budget in TRAINING_SWITCHING_BUDGETS:
-        selection_path = selection_training_data_path(data_path, budget)
-        lookahead_path = lookahead_training_data_path(data_path, budget)
+        selection_path = selection_training_data_path(data_path, budget, feature_study)
+        lookahead_path = lookahead_training_data_path(data_path, budget, feature_study)
 
         if not os.path.exists(selection_path):
             missing_selection_files.append(selection_path)
@@ -1242,10 +1342,11 @@ def build_training_data(data_path: str, dataset: str = "default") -> None:
             data_path=raw_data_path,
             switching_budgets=SWITCHING_BUDGETS,
             store_data=True,
+            feature_study=feature_study,
         )
     else:
         for budget in TRAINING_SWITCHING_BUDGETS:
-            selection_model_training_data[budget] = pd.read_csv(selection_training_data_path(data_path, budget))
+            selection_model_training_data[budget] = pd.read_csv(selection_training_data_path(data_path, budget, feature_study))
 
     if missing_lookahead_files:
         print("Lookahead training data missing for one or more budgets. Rebuilding lookahead tables...")
@@ -1254,16 +1355,18 @@ def build_training_data(data_path: str, dataset: str = "default") -> None:
             normalize_lookahead_performances=True,
             store_final_data=True,
             data_output_path=raw_data_path,
+            feature_study=feature_study,
         )
     else:
         for budget in TRAINING_SWITCHING_BUDGETS:
-            lookahead_model_training_data[budget] = pd.read_csv(lookahead_training_data_path(data_path, budget))
+            lookahead_model_training_data[budget] = pd.read_csv(lookahead_training_data_path(data_path, budget, feature_study))
 
     create_switch_model_data(
         selection_model_training_data,
         lookahead_model_training_data,
         data_output_path=data_path,
         no_switch_metric_path=achieved_metric_path(raw_data_path, NO_SWITCH_ALGORITHM, TOTAL_BUDGET),
+        feature_study=feature_study,
     )
 
 
@@ -1309,6 +1412,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Load prepared training tables instead of recreating them during training.",
     )
+    parser.add_argument(
+        "--feature-study",
+        choices=sorted(FEATURE_STUDIES),
+        default="ela",
+        help="Predictor source: ELA only, internal state only, or their combination.",
+    )
     return parser.parse_args()
 
 
@@ -1317,7 +1426,7 @@ def main() -> None:
     configure_experiment(args.dimension, args.metric)
 
     if args.mode == "build-switch-data":
-        build_training_data("./data", args.dataset)
+        build_training_data("./data", args.dataset, args.feature_study)
         return
 
     if args.mode == "evaluate":
@@ -1327,6 +1436,7 @@ def main() -> None:
             load_models=True,
             dataset=args.dataset,
             model_dataset=args.model_dataset,
+            feature_study=args.feature_study,
         )
         selector.evaluate(args.lookahead_count)
         return
@@ -1336,6 +1446,7 @@ def main() -> None:
             load_models=False,
             dataset=args.dataset,
             model_dataset=args.model_dataset,
+            feature_study=args.feature_study,
         )
         selector.train_models(
             training_data_is_stored=args.training_data_is_stored,
@@ -1346,6 +1457,7 @@ def main() -> None:
             load_models=False,
             dataset=args.dataset,
             model_dataset=args.model_dataset,
+            feature_study=args.feature_study,
         )
         selector.train_models(
             training_data_is_stored=args.training_data_is_stored,
