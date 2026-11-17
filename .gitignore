@@ -10,3 +10,23 @@ __pycache__/
 logs/
 
 models/
+
+envs/
+
+raw_evaluations/
+
+time_series_analysis/
+
+.agents/
+
+.codex/
+
+src_new/
+
+new_implementation/data/dim_5_interpolation/run_data/internal_state/internal_state_Non-elitist_B1000_5D.csv
+new_implementation/data/dim_10_interpolation/run_data/internal_state_Non-elitist_B1000_10D.csv
+new_implementation/data/dim_20_interpolation/run_data/internal_state_Non-elitist_B1000_20D.csv
+new_implementation/data/dim_40_interpolation/run_data/internal_state_Non-elitist_B1000_40D.csv
+
+# Large generated interpolation artifact (kept locally, never committed)
+new_implementation/data/dim_5_interpolation/run_data/ela_features/Non-elitist_B1000_5D/ELA_features.csv
