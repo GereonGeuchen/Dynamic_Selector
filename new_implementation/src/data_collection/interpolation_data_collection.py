@@ -187,6 +187,13 @@ def collect_interpolations(a1_budget: int, dim: int, algs_to_run=None,
         ela_path = ela_folder / ela_filename
         if algname == "Non-elitist" and ela_path.exists():
             os.remove(ela_path)
+        params_folder = root / "internal_state"
+        params_filename = (
+            f"internal_state_{algname}_{run_tag}_{dim}D{output_suffix}.csv"
+        )
+        params_path = params_folder / params_filename
+        if algname == "Non-elitist" and params_path.exists():
+            os.remove(params_path)
 
         for spec in specs:
             logger = ioh.logger.Analyzer(
@@ -198,6 +205,7 @@ def collect_interpolations(a1_budget: int, dim: int, algs_to_run=None,
             tracked = (TrackedParameters() if algname == "Non-elitist"
                        else TrackedParameters_switchAlgo())
             logger.watch(tracked, [field.name for field in fields(tracked)])
+            spec_param_rows = []
             for iid in iids:
                 problem = InterpolationProblemWrapper(
                     create_interpolation_problem(spec, iid, dim)
@@ -207,7 +215,13 @@ def collect_interpolations(a1_budget: int, dim: int, algs_to_run=None,
                     tracked.rep, tracked.iid = rep, iid
                     print(f"Running {spec.experiment_id}: iid {iid}, rep {rep}, {algname}, B{a1_budget}")
                     np.random.seed(rep)
-                    _run_switched_algorithm(problem, algorithm_class, algname, a1_budget, dim, total_budget, tracked)
+                    parameter_history = _run_switched_algorithm(
+                        problem, algorithm_class, algname, a1_budget, dim,
+                        total_budget, tracked,
+                    )
+                    for state in parameter_history:
+                        state.update(spec.metadata())
+                    spec_param_rows.extend(parameter_history)
                     if algname == "Non-elitist":
                         for budget in range(50, total_budget + 1, 50):
                             evaluations = {key: value for key, value in problem.function_evals.items() if key <= budget}
@@ -219,6 +233,21 @@ def collect_interpolations(a1_budget: int, dim: int, algs_to_run=None,
                     _record_performance(problem, spec.internal_fid, iid, rep, a1_budget, algname, total_budget, regrets, aucs)
                     problem.reset()
                 problem.detach_logger()
+
+            if spec_param_rows and algname == "Non-elitist":
+                params_frame = pd.DataFrame(spec_param_rows)
+                metadata_columns = [
+                    "fid_a", "fid_b", "alpha", "iid", "rep", "iteration",
+                    "evaluations",
+                ]
+                feature_columns = [
+                    column for column in params_frame.columns
+                    if column not in metadata_columns
+                ]
+                params_frame = params_frame[metadata_columns + feature_columns]
+                safe_df_to_csv(
+                    str(params_folder), params_filename, params_frame, append=True,
+                )
 
         if ela_rows:
             frame = pd.DataFrame(ela_rows)
@@ -248,6 +277,8 @@ def merge_parts(dim: int, a1_budget: int, algorithms: list[str], suffixes: list[
             if algorithm == "Non-elitist":
                 path = root / "ela_features" / f"{algorithm}_{run_tag}_{dim}D" / f"ELA_features{suffix}.csv"
                 paths.append(path)
+                path = root / "internal_state" / f"internal_state_{algorithm}_{run_tag}_{dim}D{suffix}.csv"
+                paths.append(path)
             for metric in ("regret", "auc"):
                 path = root / f"achieved_{metric}s" / f"achieved_{metric}s_{algorithm}_{run_tag}_{dim}D{suffix}.csv"
                 paths.append(path)
@@ -269,6 +300,20 @@ def merge_parts(dim: int, a1_budget: int, algorithms: list[str], suffixes: list[
                 if missing_columns:
                     raise ValueError(
                         f"ELA part files are missing required columns: "
+                        f"{', '.join(sorted(missing_columns))}"
+                    )
+                merged = merged[front_columns + [
+                    column for column in merged.columns if column not in front_columns
+                ]]
+            elif target.name.startswith("internal_state_"):
+                front_columns = [
+                    "fid_a", "fid_b", "alpha", "iid", "rep", "iteration",
+                    "evaluations",
+                ]
+                missing_columns = set(front_columns).difference(merged.columns)
+                if missing_columns:
+                    raise ValueError(
+                        f"Internal-state part files are missing required columns: "
                         f"{', '.join(sorted(missing_columns))}"
                     )
                 merged = merged[front_columns + [

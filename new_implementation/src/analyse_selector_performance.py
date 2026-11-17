@@ -29,7 +29,7 @@ LOOKAHEAD_COUNTS = [0,10,20]
 MA = True
 # Use default-dataset models for MA results; False uses matching-dataset models.
 models_default = True
-STANDALONE_BOXPLOTS = True
+STANDALONE_BOXPLOTS = False
 STANDALONE_ALGORITHMS = ["DE", "MLSL", "PSO", "BFGS", "Non-elitist", "Elitist"]
 
 
@@ -70,9 +70,16 @@ def lookahead_result_paths(metric_dir: Path) -> list[tuple[int, Path]]:
     return sorted(paths)
 
 
-def load_plot_data(metric: str) -> tuple[pd.DataFrame, list[str]]:
-    """Load selector values for all lookahead variants and the shared baselines."""
-    metric_dir = RESULTS_DIR / metric
+def load_plot_data(
+    metric: str, *, metric_directory: Path | None = None,
+) -> tuple[pd.DataFrame, list[str]]:
+    """Load selector values for all lookahead variants and the shared baselines.
+
+    ``metric_directory`` supports result layouts with extra feature directories,
+    e.g. ``results/dim_5/auc/ela``. When omitted, the configured selector
+    result directory is used for backward compatibility.
+    """
+    metric_dir = RESULTS_DIR / metric if metric_directory is None else metric_directory
     result_paths = lookahead_result_paths(metric_dir)
     if not result_paths:
         raise FileNotFoundError(f"No selector results found in {metric_dir}/lookahead_*/")
@@ -114,6 +121,46 @@ def load_plot_data(metric: str) -> tuple[pd.DataFrame, list[str]]:
     return plot_data, ["VBS", *lookahead_labels, f"Static B{STATIC_BUDGET}", "Non-elitist"]
 
 
+def plot_all_selector_boxplots() -> None:
+    """Plot every selector-result combination, mirroring ``results`` in ``plots``.
+
+    A combination is any directory containing
+    ``lookahead_*/selector_results.csv``. This includes dimension, metric,
+    and optional feature directories without maintaining a hard-coded list.
+    """
+    results_root = PROJECT_ROOT / "results"
+    metric_directories = sorted({path.parent.parent for path in results_root.glob(
+        "**/lookahead_*/selector_results.csv"
+    )})
+    if not metric_directories:
+        raise FileNotFoundError(f"No selector results found below {results_root}")
+
+    for metric_directory in metric_directories:
+        relative_directory = metric_directory.relative_to(results_root)
+        metric_candidates = [part for part in relative_directory.parts if part in {"auc", "regret"}]
+        dimension_candidates = [
+            int(match.group(1))
+            for part in relative_directory.parts
+            if (match := re.fullmatch(r"dim_(\d+)(?:_.*)?", part)) is not None
+        ]
+        if len(metric_candidates) != 1 or len(dimension_candidates) != 1:
+            print(f"Skipping unrecognised result directory: {metric_directory}", flush=True)
+            continue
+
+        metric = metric_candidates[0]
+        dim = dimension_candidates[0]
+        results, value_columns = load_plot_data(metric, metric_directory=metric_directory)
+        output_path = plot_function_wise_boxplots(
+            results,
+            value_columns,
+            metric,
+            lookahead_counts=LOOKAHEAD_COUNTS,
+            dim=dim,
+            output_directory=PLOT_DIR / relative_directory / "log_scale_boxplots",
+        )
+        print(f"Saved {output_path}", flush=True)
+
+
 def save_figure_as_pdf(figure: go.Figure, output_path: Path) -> None:
     """Save one-page vector PDF using Plotly's native Kaleido export."""
     try:
@@ -153,8 +200,11 @@ def plot_function_wise_boxplots(
         if missing_columns:
             raise ValueError(f"Requested plot columns not present in results: {missing_columns}")
 
-    if pio.kaleido.scope is not None:
-        pio.kaleido.scope.mathjax = None
+    # Plotly < 6 exposed the Kaleido scope here. Plotly 6 removed that public
+    # attribute, so only disable MathJax when the legacy scope is available.
+    kaleido_scope = getattr(pio.kaleido, "scope", None)
+    if kaleido_scope is not None:
+        kaleido_scope.mathjax = None
 
     colours = [TAB20_COLOURS[index % len(TAB20_COLOURS)] for index in range(len(value_columns))]
     dim = DIM if dim is None else dim
@@ -426,13 +476,18 @@ def plot_a2_distribution_and_switching(
     metric: str | None = None,
     dim: int | None = None,
     iids: list[int] | None = None,
+    metric_directory: Path | None = None,
+    output_directory: Path | None = None,
+    title_directory: str | None = None,
 ) -> list[Path]:
     """Save A2 proportions and switching-budget boxes per function/lookahead.
 
     Defaults use the current METRIC, DIM, MA and models_default settings.
-    None selects all available lookaheads; [] produces no plots. All instances
-    and repetitions are pooled per function unless ``iids`` filters instances.
-    Budgets are shown as recorded, including Non-elitist selections.
+    ``metric_directory`` and ``output_directory`` allow the function to be
+    used for any discovered results combination. None selects all available
+    lookaheads; [] produces no plots. All instances and repetitions are pooled
+    per function unless ``iids`` filters instances. Budgets are shown as
+    recorded, including Non-elitist selections.
 
     Example: plot_a2_distribution_and_switching(LOOKAHEAD_COUNTS)
     """
@@ -442,7 +497,11 @@ def plot_a2_distribution_and_switching(
         raise ValueError('metric must be either "regret" or "auc".')
     root = PROJECT_ROOT
     directory = result_directory_name(dim, MA, models_default)
-    metric_directory = root / "results" / directory / metric
+    metric_directory = (
+        root / "results" / directory / metric
+        if metric_directory is None else Path(metric_directory)
+    )
+    title_directory = directory if title_directory is None else title_directory
     available = dict(lookahead_result_paths(metric_directory))
     counts = sorted(available) if lookahead_counts is None else list(dict.fromkeys(lookahead_counts))
     missing = [count for count in counts if count not in available]
@@ -450,7 +509,10 @@ def plot_a2_distribution_and_switching(
         raise FileNotFoundError(
             f"No selector results for lookahead counts {missing or 'any'} in {metric_directory}"
         )
-    output_directory = PLOT_DIR / directory / metric / "a2_distribution_and_switching"
+    output_directory = (
+        PLOT_DIR / directory / metric / "a2_distribution_and_switching"
+        if output_directory is None else Path(output_directory)
+    )
     colours = {
         "BFGS": "#1f77b4", "Non-elitist": "#ff7f0e", "DE": "#2ca02c",
         "PSO": "#d62728", "MLSL": "#9467bd", "Elitist": "#8c564b",
@@ -504,7 +566,7 @@ def plot_a2_distribution_and_switching(
         figure.update_yaxes(title_text="Proportion", range=[0, 1], tickformat=".0%", row=1, col=1)
         figure.update_yaxes(title_text="Switching budget", rangemode="tozero", row=2, col=1)
         figure.update_layout(
-            title=f"{metric.upper()} — {directory}, lookahead {count}",
+            title=f"{metric.upper()} — {title_directory}, lookahead {count}",
             barmode="stack", template="plotly_white", width=1200, height=800,
             font={"size": 14}, margin={"l": 80, "r": 30, "t": 130, "b": 60},
             legend={"orientation": "h", "x": 0.5, "xanchor": "center", "y": 1.14},
@@ -514,6 +576,181 @@ def plot_a2_distribution_and_switching(
         output_path = output_directory / f"a2_distribution_and_switching_lookahead_{count}{instance_suffix}.pdf"
         figure.write_image(output_path, format="pdf", width=1200, height=800, scale=1)
         output_paths.append(output_path)
+    return output_paths
+
+
+def plot_all_a2_distributions_and_switching(
+    lookahead_counts: list[int] | None = None,
+) -> list[Path]:
+    """Plot A2 distributions and switching budgets for every result combination.
+
+    Each directory below ``results`` containing
+    ``lookahead_*/selector_results.csv`` is treated as one combination. The
+    matching output is written below ``plots`` with the same relative
+    directory. By default all available lookahead values are plotted; pass
+    ``[0, 10, 20]`` to create only those three variants.
+    """
+    results_root = PROJECT_ROOT / "results"
+    metric_directories = sorted({
+        path.parent.parent
+        for path in results_root.glob("**/lookahead_*/selector_results.csv")
+    })
+    if not metric_directories:
+        raise FileNotFoundError(f"No selector results found below {results_root}")
+
+    output_paths = []
+    for metric_directory in metric_directories:
+        relative_directory = metric_directory.relative_to(results_root)
+        metric_candidates = [part for part in relative_directory.parts if part in {"auc", "regret"}]
+        dimension_candidates = [
+            int(match.group(1))
+            for part in relative_directory.parts
+            if (match := re.fullmatch(r"dim_(\d+)(?:_.*)?", part)) is not None
+        ]
+        if len(metric_candidates) != 1 or len(dimension_candidates) != 1:
+            print(f"Skipping unrecognised result directory: {metric_directory}", flush=True)
+            continue
+
+        sample_paths = lookahead_result_paths(metric_directory)
+        sample_columns = set(pd.read_csv(sample_paths[0][1], nrows=0).columns)
+        required_columns = {*KEY_COLUMNS, "selected_algorithm", "switch_budget"}
+        missing_columns = required_columns - sample_columns
+        if missing_columns:
+            print(
+                "Skipping A2 distribution and switching plots for "
+                f"{relative_directory}; unsupported result schema (missing "
+                f"{', '.join(sorted(missing_columns))})",
+                flush=True,
+            )
+            continue
+
+        print(f"Creating A2 distribution and switching plots for {relative_directory}", flush=True)
+        paths = plot_a2_distribution_and_switching(
+            lookahead_counts,
+            metric=metric_candidates[0],
+            dim=dimension_candidates[0],
+            metric_directory=metric_directory,
+            output_directory=(PLOT_DIR / relative_directory / "a2_distribution_and_switching"),
+            title_directory=str(relative_directory),
+        )
+        output_paths.extend(paths)
+        for path in paths:
+            print(f"Saved {path}", flush=True)
+    return output_paths
+
+
+FEATURE_COMPARISON_DIRECTORIES = {
+    "ela": "ELA",
+    "ela_internal_state": "ELA + internal state",
+    "internal_state": "Internal state",
+}
+
+
+def plot_feature_comparison_boxplots(
+    lookahead_counts: list[int] | None = None,
+) -> list[Path]:
+    """Compare feature sets at a fixed lookahead in function-wise log boxplots.
+
+    Standard results are expected at
+    ``results/dim_N/<metric>/<feature_set>/lookahead_K/selector_results.csv``.
+    One PDF is produced per dimension, metric, and requested lookahead. Each
+    function panel compares the achieved selector value for ELA, ELA plus
+    internal state, and internal state alone.
+    """
+    results_root = PROJECT_ROOT / "results"
+    output_paths = []
+    dimension_directories = sorted(
+        path for path in results_root.glob("dim_*")
+        if path.is_dir() and re.fullmatch(r"dim_\d+", path.name)
+    )
+    for dimension_directory in dimension_directories:
+        dim = int(dimension_directory.name.removeprefix("dim_"))
+        for metric in ("auc", "regret"):
+            feature_directories = {
+                directory: dimension_directory / metric / directory
+                for directory in FEATURE_COMPARISON_DIRECTORIES
+            }
+            missing_features = [
+                label for label, directory in feature_directories.items()
+                if not directory.is_dir()
+            ]
+            if missing_features:
+                print(
+                    f"Skipping feature comparison for {dimension_directory.name}/{metric}; "
+                    f"missing feature results: {', '.join(missing_features)}",
+                    flush=True,
+                )
+                continue
+
+            available_counts = set.intersection(*[
+                {count for count, _ in lookahead_result_paths(directory)}
+                for directory in feature_directories.values()
+            ])
+            counts = (
+                sorted(available_counts) if lookahead_counts is None
+                else list(dict.fromkeys(lookahead_counts))
+            )
+            missing_counts = [count for count in counts if count not in available_counts]
+            if missing_counts:
+                print(
+                    f"Skipping unavailable lookaheads for {dimension_directory.name}/{metric}: "
+                    f"{missing_counts}",
+                    flush=True,
+                )
+            for count in counts:
+                if count not in available_counts:
+                    continue
+                print(
+                    f"Creating feature-comparison boxplot for "
+                    f"{dimension_directory.name}/{metric}, lookahead {count}",
+                    flush=True,
+                )
+                frames = []
+                achieved_column = f"achieved_{metric}"
+                for feature_directory, label in FEATURE_COMPARISON_DIRECTORIES.items():
+                    result_path = (
+                        feature_directories[feature_directory]
+                        / f"lookahead_{count}" / "selector_results.csv"
+                    )
+                    results = pd.read_csv(result_path)
+                    required_columns = [*KEY_COLUMNS, achieved_column]
+                    missing_columns = set(required_columns) - set(results.columns)
+                    if missing_columns:
+                        raise ValueError(
+                            f"{result_path} is missing required columns: "
+                            f"{', '.join(sorted(missing_columns))}"
+                        )
+                    frames.append(results.loc[:, required_columns].rename(
+                        columns={achieved_column: label}
+                    ))
+
+                comparison = frames[0]
+                for frame in frames[1:]:
+                    comparison = comparison.merge(
+                        frame, on=KEY_COLUMNS, how="inner", validate="one_to_one"
+                    )
+                if comparison.empty:
+                    raise ValueError(
+                        f"No shared selector runs for {dimension_directory.name}/{metric}, "
+                        f"lookahead {count}"
+                    )
+                labels = list(FEATURE_COMPARISON_DIRECTORIES.values())
+                output_path = plot_function_wise_boxplots(
+                    comparison,
+                    labels,
+                    metric,
+                    lookahead_counts=None,
+                    dim=dim,
+                    output_directory=(
+                        PLOT_DIR / dimension_directory.name / metric
+                        / "feature_comparison_log_scale_boxplots"
+                    ),
+                    output_filename=(
+                        f"function_wise_feature_comparison_{metric}_lookahead_{count}.pdf"
+                    ),
+                )
+                output_paths.append(output_path)
+                print(f"Saved {output_path}", flush=True)
     return output_paths
 
 
@@ -642,10 +879,15 @@ def plot_vbs_distribution_and_switching(
     dim: int | None = None,
     iids: list[int] | None = None,
     data_directory: Path | None = None,
+    output_directory: Path | None = None,
+    results_directory: Path | None = None,
+    title_directory: str | None = None,
 ) -> Path:
     """Save the VBS counterpart of the A2 distribution and switching plot.
 
     By default, only the selector test instances (IIDs 6 and 7) are shown.
+    The optional directory arguments support batch plotting of result layouts
+    beyond the globally configured dataset.
     """
     metric = METRIC if metric is None else metric
     dim = DIM if dim is None else dim
@@ -659,14 +901,21 @@ def plot_vbs_distribution_and_switching(
 
     # VBS comes directly from raw outcomes, so model-training provenance is irrelevant.
     directory = f"dim_{dim}_ma" if MA else f"dim_{dim}"
-    vbs_results_directory = Path("results") / directory / metric
+    title_directory = directory if title_directory is None else title_directory
+    vbs_results_directory = (
+        PROJECT_ROOT / "results" / directory / metric
+        if results_directory is None else Path(results_directory)
+    )
     vbs_results_directory.mkdir(parents=True, exist_ok=True)
     choices.to_csv(
         vbs_results_directory / "vbs_choices.csv", index=False,
         columns=[*KEY_COLUMNS, "selected_algorithm", "switch_budget", f"vbs_{metric}"],
     )
 
-    output_directory = PLOT_DIR / directory / metric / "vbs_distribution_and_switching"
+    output_directory = (
+        PLOT_DIR / directory / metric / "vbs_distribution_and_switching"
+        if output_directory is None else Path(output_directory)
+    )
     colours = {
         "BFGS": "#1f77b4", "Non-elitist": "#ff7f0e", "DE": "#2ca02c",
         "PSO": "#d62728", "MLSL": "#9467bd", "Elitist": "#8c564b",
@@ -709,7 +958,7 @@ def plot_vbs_distribution_and_switching(
     figure.update_yaxes(title_text="Proportion", range=[0, 1], tickformat=".0%", row=1, col=1)
     figure.update_yaxes(title_text="Switching budget", rangemode="tozero", row=2, col=1)
     figure.update_layout(
-        title=f"{metric.upper()} - VBS ({directory})",
+        title=f"{metric.upper()} - VBS ({title_directory})",
         barmode="stack", template="plotly_white", width=1200, height=800,
         font={"size": 14}, margin={"l": 80, "r": 30, "t": 130, "b": 60},
         legend={"orientation": "h", "x": 0.5, "xanchor": "center", "y": 1.14},
@@ -720,26 +969,73 @@ def plot_vbs_distribution_and_switching(
     figure.write_image(output_path, format="pdf", width=1200, height=800, scale=1)
     return output_path
 
-def main() -> None:
-    global METRIC, DIM, MA, models_default, RESULTS_DIR
 
-    plot_standalone_boxplots()
-    
-    # for DIM in [5, 40]:
-    #     for MA in [False, True]:
-    #         for models_default in ([False, True] if MA else [False]):
-    #             RESULTS_DIR = Path("results") / result_directory_name(DIM, MA, models_default)
-    #             for METRIC in ["auc", "regret"]:
-    #                 # results, value_columns = load_plot_data(METRIC)
-    #                 # output_path = plot_function_wise_boxplots(
-    #                 #     results,
-    #                 #     value_columns,
-    #                 #     METRIC,
-    #                 #     lookahead_counts=LOOKAHEAD_COUNTS,
-    #                 # )
-    #                 # print(f"Saved function-wise boxplots to {output_path}")
-    #                 for output_path in plot_a2_distribution_and_switching(LOOKAHEAD_COUNTS):
-    #                     print(f"Saved A2 distribution and switching plots to {output_path}")
+def plot_all_vbs_distributions_and_switching() -> list[Path]:
+    """Plot VBS distributions for every selector result combination.
+
+    VBS choices are recomputed from each combination's raw ``run_data``. A
+    combination is skipped (with a message) when its raw data are unavailable,
+    which lets selector-only result archives remain usable.
+    """
+    results_root = PROJECT_ROOT / "results"
+    data_root = PROJECT_ROOT / "data"
+    metric_directories = sorted({
+        path.parent.parent
+        for path in results_root.glob("**/lookahead_*/selector_results.csv")
+    })
+    if not metric_directories:
+        raise FileNotFoundError(f"No selector results found below {results_root}")
+
+    output_paths = []
+    for metric_directory in metric_directories:
+        relative_directory = metric_directory.relative_to(results_root)
+        metric_candidates = [part for part in relative_directory.parts if part in {"auc", "regret"}]
+        dimension_matches = [
+            (index, part, match)
+            for index, part in enumerate(relative_directory.parts)
+            if (match := re.fullmatch(r"dim_(\d+)(?:_.*)?", part)) is not None
+        ]
+        if len(metric_candidates) != 1 or len(dimension_matches) != 1:
+            print(f"Skipping unrecognised result directory: {metric_directory}", flush=True)
+            continue
+
+        dimension_index, dimension_directory, match = dimension_matches[0]
+        dim = int(match.group(1))
+        # Prefer a data layout that preserves any prefix such as
+        # ``old_switching_logic``; fall back to the standard dimension dataset.
+        prefixed_data_directory = (
+            data_root / Path(*relative_directory.parts[:dimension_index + 1]) / "run_data"
+        )
+        standard_data_directory = data_root / dimension_directory / "run_data"
+        data_directory = next(
+            (path for path in (prefixed_data_directory, standard_data_directory) if path.is_dir()),
+            None,
+        )
+        if data_directory is None:
+            print(f"Skipping VBS plot; raw run data not found for {metric_directory}", flush=True)
+            continue
+
+        print(f"Creating VBS distribution and switching plot for {relative_directory}", flush=True)
+        output_path = plot_vbs_distribution_and_switching(
+            metric=metric_candidates[0],
+            dim=dim,
+            data_directory=data_directory / f"achieved_{metric_candidates[0]}s",
+            results_directory=metric_directory,
+            output_directory=(PLOT_DIR / relative_directory / "vbs_distribution_and_switching"),
+            title_directory=str(relative_directory),
+        )
+        output_paths.append(output_path)
+        print(f"Saved {output_path}", flush=True)
+    return output_paths
+
+def main() -> None:
+    if STANDALONE_BOXPLOTS:
+        plot_standalone_boxplots()
+    else:
+        # plot_all_selector_boxplots()
+        # plot_all_a2_distributions_and_switching(LOOKAHEAD_COUNTS)
+        # plot_all_vbs_distributions_and_switching()
+        plot_feature_comparison_boxplots(LOOKAHEAD_COUNTS)
 
 
 if __name__ == "__main__":

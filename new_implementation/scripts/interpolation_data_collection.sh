@@ -5,19 +5,20 @@
 # Non-elitist run computes ELA features and is therefore submitted once per
 # interpolation ID, followed by a dependent merge job.
 #
-# Usage: bash scripts/interpolation_data_collection.sh [dimension] [repetitions]
+# Usage: bash scripts/interpolation_data_collection.sh [repetitions]
 set -euo pipefail
 
 ENV_PATH="/rwthfs/rz/cluster/home/p0027894/Dynamic_Selector/envs/dynamic_selector_venv"
 WORKDIR="/hpcwork/p0027894/Dynamic_Selector/new_implementation"
-DIMENSION="${1:-40}"
-REPETITIONS="${2:-20}"
+DIMENSIONS=(5 10 20 40)
+REPETITIONS="${1:-40}"
 INTERPOLATION_IDS=($(seq 1 50))
 
 mkdir -p "$WORKDIR/logs"
 
 # At budgets below 1000, the collector automatically runs the five A2
 # algorithms and skips Non-elitist (whose trajectory is the B1000 run).
+for DIMENSION in "${DIMENSIONS[@]}"; do
 for BUDGET in $(seq 50 50 950); do
   sbatch <<EOF
 #!/bin/bash
@@ -27,7 +28,7 @@ for BUDGET in $(seq 50 50 950); do
 #SBATCH --error=${WORKDIR}/logs/interpolation_B${BUDGET}_D${DIMENSION}_%j.err
 #SBATCH --time=12:00:00
 #SBATCH --mem=4G
-#SBATCH --partition=c25ms
+#SBATCH --partition=c23ms
 #SBATCH --cpus-per-task=1
 
 set -euo pipefail
@@ -35,7 +36,7 @@ cd "$WORKDIR"
 module load GCCcore/12.2.0
 module load Python/3.10.8
 source "$ENV_PATH/bin/activate"
-PYTHONPATH="$WORKDIR/src" python -m data_collection.interpolation "$BUDGET" --dimension "$DIMENSION" --repetitions "$REPETITIONS"
+PYTHONPATH="$WORKDIR/src" python -m data_collection.interpolation_data_collection "$BUDGET" --dimension "$DIMENSION" --repetitions "$REPETITIONS"
 EOF
 done
 
@@ -49,7 +50,7 @@ for INTERPOLATION_ID in "${INTERPOLATION_IDS[@]}"; do
 #SBATCH --error=${WORKDIR}/logs/interpolation_ela_B1000_I${INTERPOLATION_ID}_D${DIMENSION}_%j.err
 #SBATCH --time=12:00:00
 #SBATCH --mem=4G
-#SBATCH --partition=c25ms
+#SBATCH --partition=c23ms
 #SBATCH --cpus-per-task=1
 
 set -euo pipefail
@@ -57,7 +58,7 @@ cd "$WORKDIR"
 module load GCCcore/12.2.0
 module load Python/3.10.8
 source "$ENV_PATH/bin/activate"
-PYTHONPATH="$WORKDIR/src" python -m data_collection.interpolation 1000 --dimension "$DIMENSION" --algorithms Non-elitist --repetitions "$REPETITIONS" --interpolation-ids "$INTERPOLATION_ID" --suffix ".part-$INTERPOLATION_ID"
+PYTHONPATH="$WORKDIR/src" python -m data_collection.interpolation_data_collection 1000 --dimension "$DIMENSION" --algorithms Non-elitist --repetitions "$REPETITIONS" --interpolation-ids "$INTERPOLATION_ID" --suffix ".part-$INTERPOLATION_ID"
 EOF
 )
   ELA_JOB_IDS+=("$ELA_JOB_ID")
@@ -74,7 +75,7 @@ MERGE_JOB_ID=$(sbatch --parsable --dependency=afterok:${DEPENDENCY_IDS} <<EOF
 #SBATCH --error=${WORKDIR}/logs/merge_interpolation_ela_B1000_D${DIMENSION}_%j.err
 #SBATCH --time=00:30:00
 #SBATCH --mem=4G
-#SBATCH --partition=c25ms
+#SBATCH --partition=c23ms
 #SBATCH --cpus-per-task=1
 
 set -euo pipefail
@@ -82,8 +83,9 @@ cd "$WORKDIR"
 module load GCCcore/12.2.0
 module load Python/3.10.8
 source "$ENV_PATH/bin/activate"
-PYTHONPATH="$WORKDIR/src" python -m data_collection.interpolation 1000 --dimension "$DIMENSION" --algorithms Non-elitist --merge-suffixes "$PART_SUFFIXES"
+PYTHONPATH="$WORKDIR/src" python -m data_collection.interpolation_data_collection 1000 --dimension "$DIMENSION" --algorithms Non-elitist --merge-suffixes "$PART_SUFFIXES"
 EOF
 )
 
 echo "Submitted B50--B950 jobs plus ${#ELA_JOB_IDS[@]} B1000 ELA jobs; merge job ${MERGE_JOB_ID}."
+done

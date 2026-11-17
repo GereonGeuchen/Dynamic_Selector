@@ -3,19 +3,6 @@
 ENV_PATH="/home/p0027894/Dynamic_Selector/envs/dynamic_selector_venv"
 WORKDIR="/hpcwork/p0027894/Dynamic_Selector/new_implementation"
 DIMENSION=40
-# Pass `true` as the first script argument to collect ManyAffine data:
-# ./data_collection.sh true
-USE_MA="${1:-false}"
-
-case "$USE_MA" in
-  true|false) ;;
-  *)
-    echo "Usage: $0 [true|false]" >&2
-    exit 1
-    ;;
-esac
-
-# `data_collection.py` expects use_ma as its seventh positional argument.
 FUNCTION_IDS="$(seq -s, 1 24)"
 
 mkdir -p "$WORKDIR/logs"
@@ -32,9 +19,9 @@ for BUDGET in "${BUDGETS[@]}"; do
     sbatch <<EOF
 #!/bin/bash
 #SBATCH -A p0027894
-#SBATCH --job-name=data_collection_test_B${BUDGET}_${alg}_D${DIMENSION}_ma${USE_MA}
-#SBATCH --output=${WORKDIR}/logs/data_collection_test_B${BUDGET}_${alg}_D${DIMENSION}_ma${USE_MA}.out
-#SBATCH --error=${WORKDIR}/logs/data_collection_test_B${BUDGET}_${alg}_D${DIMENSION}_ma${USE_MA}.err
+#SBATCH --job-name=data_collection_test_B${BUDGET}_${alg}_D${DIMENSION}
+#SBATCH --output=${WORKDIR}/logs/data_collection_test_B${BUDGET}_${alg}_D${DIMENSION}.out
+#SBATCH --error=${WORKDIR}/logs/data_collection_test_B${BUDGET}_${alg}_D${DIMENSION}.err
 #SBATCH --time=12:00:00
 #SBATCH --mem=4G
 #SBATCH --partition=c25ms
@@ -45,7 +32,7 @@ module load GCCcore/12.2.0
 module load Python/3.10.8
 source "$ENV_PATH/bin/activate"
 
-PYTHONPATH="$WORKDIR/src" python -m data_collection.standard "$BUDGET" "$alg" "$DIMENSION" "$FUNCTION_IDS" "" "$USE_MA"
+PYTHONPATH="$WORKDIR/src" python -m data_collection.data_collection "$BUDGET" "$alg" "$DIMENSION" "$FUNCTION_IDS"
 
 EOF
   done

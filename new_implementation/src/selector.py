@@ -91,25 +91,19 @@ def study_scoped_path(base_path: str, feature_study: str) -> str:
     return os.path.join(normalized, feature_study)
 
 
-def dimension_directory_name(dataset: str = "default") -> str:
-    """Return the directory name used for one collected dataset."""
-    if dataset not in {"default", "ma"}:
-        raise ValueError(f"Unknown dataset {dataset!r}; expected 'default' or 'ma'.")
-    return f"dim_{DIM}_ma" if dataset == "ma" else f"dim_{DIM}"
+def dimension_directory_name() -> str:
+    """Return the standard non-MA collection directory name."""
+    return f"dim_{DIM}"
 
 
-def result_directory_name(dataset: str) -> str:
-    """Return the standard result directory name for one dataset."""
-    return dimension_directory_name(dataset)
+def result_directory_name() -> str:
+    """Return the standard non-MA result directory name."""
+    return dimension_directory_name()
 
 
-def dimension_scoped_path(base_path: str, dataset: str = "default") -> str:
-    """Return the dimension- and dataset-specific experiment directory.
-
-    ``dataset="ma"`` uses the MA collection (``dim_<DIM>_ma``); the default
-    preserves the original ``dim_<DIM>`` layout.
-    """
-    dimension_directory = dimension_directory_name(dataset)
+def dimension_scoped_path(base_path: str) -> str:
+    """Return the standard non-MA dimension-specific experiment directory."""
+    dimension_directory = dimension_directory_name()
     normalized = os.path.normpath(base_path)
     if os.path.basename(normalized) == dimension_directory:
         return normalized
@@ -185,6 +179,8 @@ def switch_budget_for_algorithm(algorithm: str, switch_budget: int) -> int:
 
 def get_metric_value(metrics: pd.DataFrame, fid: int, iid: int, rep: int, algorithm: str, switch_budget: int):
     metric_budget = switch_budget_for_algorithm(algorithm, switch_budget)
+    if isinstance(metrics, pd.Series):
+        return metrics.loc[(fid, iid, rep, metric_budget, algorithm)]
     return metrics[
         (metrics["fid"] == fid) &
         (metrics["iid"] == iid) &
@@ -192,6 +188,39 @@ def get_metric_value(metrics: pd.DataFrame, fid: int, iid: int, rep: int, algori
         (metrics["a1_budget"] == metric_budget) &
         (metrics["algname"] == algorithm)
     ][METRIC_COLUMN].values[0]
+
+
+def metric_lookup(metrics: pd.DataFrame) -> pd.Series:
+    """Index metrics once for fast repeated single-run evaluation lookups."""
+    return metrics.set_index(
+        [*KEY_COLS, "a1_budget", "algname"], verify_integrity=True
+    )[METRIC_COLUMN]
+
+
+def vbs_metric(metrics: pd.DataFrame | pd.Series, fid: int, iid: int, rep: int):
+    """Return the virtual-best metric for one run from a table or lookup."""
+    if isinstance(metrics, pd.Series):
+        return metrics.xs((fid, iid, rep), level=KEY_COLS).min()
+    return metrics[
+        (metrics["fid"] == fid) &
+        (metrics["iid"] == iid) &
+        (metrics["rep"] == rep)
+    ][METRIC_COLUMN].min()
+
+
+def clip_features_to_training_range(
+    features: pd.DataFrame, scaler: MinMaxScaler,
+) -> pd.DataFrame:
+    """Clip evaluation predictors to the fitted scaler's finite training range.
+
+    This turns ``-inf`` and ``+inf`` into the corresponding training bound and
+    prevents extrapolation beyond the standard-BBOB feature domain.
+    """
+    if len(features.columns) != len(scaler.data_min_):
+        raise ValueError("Feature columns do not match the fitted scaler")
+    lower = pd.Series(scaler.data_min_, index=features.columns)
+    upper = pd.Series(scaler.data_max_, index=features.columns)
+    return features.clip(lower=lower, upper=upper, axis="columns")
 
 def selection_feature_cols(data: pd.DataFrame) -> list[str]:
     return [col for col in data.columns if col not in META_COLS + A2_ALGORITHMS]
@@ -900,7 +929,7 @@ def create_lookahead_model_data(selection_model_training_data: dict[int, pd.Data
     return lookahead_model_training_data
 
 class DynamicSelector:
-    def __init__(self, switching_budgets: list = SWITCHING_BUDGETS, data_path: str = "./data", results_path: str = "./results", model_path: str = "./models", load_models: bool = False, dataset: str = "default", model_dataset: str | None = None, feature_study: str = "ela"):
+    def __init__(self, switching_budgets: list = SWITCHING_BUDGETS, data_path: str = "./data", results_path: str = "./results", model_path: str = "./models", load_models: bool = False, feature_study: str = "ela", lookahead_count: int | None = None):
         """
         Initializes the DynamicSelector.
 
@@ -916,29 +945,18 @@ class DynamicSelector:
             The folder structure must be the same as the one created by train_models
         load_models: bool, optional
             Whether to load the trained models from model_path. If False, the models will be initialized as None and need to be trained using train_models before evaluation. Default is False.
-        dataset: {"default", "ma"}, optional
-            Dataset collection to evaluate or train on. ``"ma"`` reads from
-            ``dim_<DIM>_ma``.
-        model_dataset: {"default", "ma"}, optional
-            Dataset collection the loaded models were trained on. If omitted,
-            it is the same as ``dataset``. When it differs, results are stored
-            under ``dim_<DIM>_<dataset>_models_<model_dataset>``.
         """
         self.feature_study = validate_feature_study(feature_study)
-        if model_dataset is None:
-            model_dataset = dataset
-        result_directory = result_directory_name(dataset)
-        if model_dataset != dataset:
-            result_directory = f"{result_directory}_models_{model_dataset}"
+        result_directory = result_directory_name()
         self.results_path = study_scoped_path(metric_scoped_path(os.path.join(results_path, result_directory)), self.feature_study)
         self.switching_budgets = list(switching_budgets)
-        dataset_path = dimension_scoped_path(data_path, dataset)
+        dataset_path = dimension_scoped_path(data_path)
         self.raw_data_path = run_data_path(dataset_path)
         self.data_path = study_scoped_path(metric_scoped_path(training_data_path(dataset_path)), self.feature_study)
-        self.model_path = study_scoped_path(metric_scoped_path(dimension_scoped_path(model_path, model_dataset)), self.feature_study)
+        self.model_path = study_scoped_path(metric_scoped_path(dimension_scoped_path(model_path)), self.feature_study)
         
         if load_models:
-            self.models = self.load_models_from_folder()
+            self.models = self.load_models_from_folder(lookahead_count)
         else:
             self.models = {
                 budget: {
@@ -951,7 +969,7 @@ class DynamicSelector:
             }
           
 
-    def load_models_from_folder(self) -> dict:
+    def load_models_from_folder(self, lookahead_count: int | None = None) -> dict:
         models = {}
         for budget in self.switching_budgets:
             if budget == TOTAL_BUDGET: continue
@@ -977,9 +995,13 @@ class DynamicSelector:
             feature_columns = joblib.load(feature_columns_path)
             switching_models = {}
 
-            for lookahead_count in range(MAX_LOOKAHEAD_COUNT + 1):
+            lookahead_counts = (
+                range(MAX_LOOKAHEAD_COUNT + 1)
+                if lookahead_count is None else [lookahead_count]
+            )
+            for count in lookahead_counts:
                 variant_path = os.path.join(
-                    switching_model_base_path, f"lookahead_{lookahead_count}"
+                    switching_model_base_path, f"lookahead_{count}"
                 )
                 variant_model_path = os.path.join(variant_path, "switching_model.joblib")
                 if not os.path.exists(variant_model_path):
@@ -987,7 +1009,7 @@ class DynamicSelector:
                         f"Lookahead variant {lookahead_count} for budget {budget} "
                         f"is incomplete in {variant_path}"
                 )
-                switching_models[lookahead_count] = joblib.load(variant_model_path)
+                switching_models[count] = joblib.load(variant_model_path)
 
             models[budget] = {
                 "selection_model": selection_model,
@@ -1126,14 +1148,19 @@ class DynamicSelector:
             joblib.dump(self.models[budget]["feature_columns"], os.path.join(model_budget_path, "feature_columns.joblib"))
 
     def _scaled_feature_row(
-        self, budget: int, feature_table: pd.DataFrame, fid: int, iid: int, rep: int
+        self, budget: int, feature_table: pd.DataFrame, fid: int, iid: int, rep: int,
+        clip_to_training_range: bool = False,
     ) -> pd.DataFrame:
         """Return one persisted-study feature row in the model's column order."""
-        row = feature_table[
-            (feature_table["fid"] == fid)
-            & (feature_table["iid"] == iid)
-            & (feature_table["rep"] == rep)
-        ]
+        key = (fid, iid, rep)
+        if isinstance(feature_table.index, pd.MultiIndex) and list(feature_table.index.names) == KEY_COLS:
+            row = feature_table.loc[[key]]
+        else:
+            row = feature_table[
+                (feature_table["fid"] == fid)
+                & (feature_table["iid"] == iid)
+                & (feature_table["rep"] == rep)
+            ]
         if len(row) != 1:
             raise ValueError(
                 f"Expected one {self.feature_study} feature row for "
@@ -1144,10 +1171,13 @@ class DynamicSelector:
         if missing:
             raise ValueError(f"Feature row for budget {budget} is missing columns: {sorted(missing)}")
         row = row[feature_columns]
-        scaled = self.models[budget]["feature_scaler"].transform(row)
+        scaler = self.models[budget]["feature_scaler"]
+        if clip_to_training_range:
+            row = clip_features_to_training_range(row, scaler)
+        scaled = scaler.transform(row)
         return pd.DataFrame(scaled, columns=feature_columns, index=[(fid, iid, rep)])
 
-    def simulate_single_run(self, fid: int, iid: int, rep: int, feature_tables: dict[int, pd.DataFrame], metrics: pd.DataFrame, lookahead_count: int) -> dict:
+    def simulate_single_run(self, fid: int, iid: int, rep: int, feature_tables: dict[int, pd.DataFrame], metrics: pd.DataFrame, lookahead_count: int, clip_to_training_range: bool = False) -> dict:
         """
         Simulates a single run of the dynamic selector on a given instance, and returns the results.
 
@@ -1177,7 +1207,7 @@ class DynamicSelector:
         for budget in self.switching_budgets:
             if budget == TOTAL_BUDGET: continue
             predictor_features = self._scaled_feature_row(
-                budget, feature_tables[budget], fid, iid, rep
+                budget, feature_tables[budget], fid, iid, rep, clip_to_training_range
             )
 
             switching_models = self.models[budget]["switching_models"]
@@ -1199,7 +1229,6 @@ class DynamicSelector:
                 selection_model = self.models[budget]["selection_model"]
                 algo_predicion = selection_model.predict(predictor_features)
                 predicted_algo = list(algo_predicion.values())[0][0][0]
-                print(f"Switch decision: {switch_decision}, predicted algorithm: {predicted_algo}")
                 achieved_metric = get_metric_value(metrics, fid, iid, rep, predicted_algo, budget)
 
                 switch_budget = budget
@@ -1214,17 +1243,13 @@ class DynamicSelector:
             switch_budget = TOTAL_BUDGET
             selected_algorithm = predicted_algo
         
-        vbs_metric = metrics[
-            (metrics["fid"] == fid) &
-            (metrics["iid"] == iid) &
-            (metrics["rep"] == rep)
-            ][METRIC_COLUMN].min()
+        run_vbs_metric = vbs_metric(metrics, fid, iid, rep)
 
         return{
             "fid": fid,
             "iid": iid,
             "rep": rep,
-            VBS_METRIC_COLUMN: vbs_metric,
+            VBS_METRIC_COLUMN: run_vbs_metric,
             "switch_budget": switch_budget,
             "selected_algorithm": selected_algorithm,
             METRIC_COLUMN: achieved_metric,
@@ -1316,9 +1341,9 @@ class DynamicSelector:
 
 # Builds switching-model training data, reusing stored selection and lookahead
 # tables when available and rebuilding/storing any missing intermediate tables.
-def build_training_data(data_path: str, dataset: str = "default", feature_study: str = "ela") -> None:
+def build_training_data(data_path: str, feature_study: str = "ela") -> None:
     feature_study = validate_feature_study(feature_study)
-    dataset_path = dimension_scoped_path(data_path, dataset)
+    dataset_path = dimension_scoped_path(data_path)
     raw_data_path = run_data_path(dataset_path)
     data_path = study_scoped_path(metric_scoped_path(training_data_path(dataset_path)), feature_study)
     selection_model_training_data = {}
@@ -1382,25 +1407,13 @@ def parse_args() -> argparse.Namespace:
         "--dimension",
         type=int,
         default=DIM,
-        help="Problem dimension; selects dim_<dimension> or dim_<dimension>_ma directories.",
+        help="Problem dimension; selects the dim_<dimension> directory.",
     )
     parser.add_argument(
         "--metric",
         choices=["regret", "auc"],
         default=METRIC,
         help="Performance metric used for training data, models, and results.",
-    )
-    parser.add_argument(
-        "--dataset",
-        choices=["default", "ma"],
-        default="default",
-        help="Dataset collection to train on or evaluate; 'ma' uses dim_<DIM>_ma. (I.e. whether or not to use ma-BBOB).",
-    )
-    parser.add_argument(
-        "--model-dataset",
-        choices=["default", "ma"],
-        help=("Dataset collection used to train the models to load. Defaults to --dataset. "
-              "If it differs, results use a _models_<dataset> suffix."),
     )
     parser.add_argument(
         "--lookahead-count",
@@ -1426,7 +1439,7 @@ def main() -> None:
     configure_experiment(args.dimension, args.metric)
 
     if args.mode == "build-switch-data":
-        build_training_data("./data", args.dataset, args.feature_study)
+        build_training_data("./data", args.feature_study)
         return
 
     if args.mode == "evaluate":
@@ -1434,8 +1447,6 @@ def main() -> None:
             raise ValueError("--lookahead-count is required when --mode evaluate")
         selector = DynamicSelector(
             load_models=True,
-            dataset=args.dataset,
-            model_dataset=args.model_dataset,
             feature_study=args.feature_study,
         )
         selector.evaluate(args.lookahead_count)
@@ -1444,8 +1455,6 @@ def main() -> None:
     if args.mode == "train":
         selector = DynamicSelector(
             load_models=False,
-            dataset=args.dataset,
-            model_dataset=args.model_dataset,
             feature_study=args.feature_study,
         )
         selector.train_models(
@@ -1455,8 +1464,6 @@ def main() -> None:
     if args.mode == "train-evaluate":
         selector = DynamicSelector(
             load_models=False,
-            dataset=args.dataset,
-            model_dataset=args.model_dataset,
             feature_study=args.feature_study,
         )
         selector.train_models(

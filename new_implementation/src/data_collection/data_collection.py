@@ -21,18 +21,12 @@ from ioh import ProblemClass
 from modcma import ModularCMAES, Parameters
 import numpy as np
 
-# from many_affine import ManyAffine
-
 from sklearn.metrics import auc 
 
 from pathlib import Path
 
 # Import the algorithms to be used in A2
 from optimisation_algorithms import BFGS, DE, MLSL, PSO
-from data_collection.create_affine_functions import (
-    create_affine_function,
-    generate_weights,
-)
 
 # Import ELA feature calculation functions
 from pflacco.classical_ela_features import (
@@ -46,28 +40,9 @@ from pflacco.classical_ela_features import (
 
 # Wrapper class for IOH problem to store evaluations in array for ELA calculation
 class IOHProblemWrapper:
-    def __init__(self, *args, multi_affine=False, **kwargs):
-        """Wrap an IOH problem and retain its evaluated points.
-
-        Set ``multi_affine=True`` to create the ManyAffine realization for
-        ``(fid, iid, dimension)`` passed as the first three positional
-        arguments.  Otherwise this wrapper delegates unchanged to
-        :func:`ioh.get_problem`.
-        """
-        if multi_affine:
-            if len(args) < 3:
-                raise TypeError(
-                    "multi_affine=True requires fid, iid, and dimension as "
-                    "the first three positional arguments"
-                )
-
-            fid, iid, dimension = args[:3]
-            weights = generate_weights(fid, dimension)
-            self.problem = create_affine_function(
-                fid, iid, weights, n_variables=dimension
-            )
-        else:
-            self.problem = ioh.get_problem(*args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        """Wrap a standard IOH BBOB problem and retain its evaluated points."""
+        self.problem = ioh.get_problem(*args, **kwargs)
         self.function_evals = {}
         self.best_so_far_evals = {}
         self.best_eval_so_far = np.inf
@@ -467,13 +442,10 @@ ALGORITHM_SPECS = (
 DEFAULT_ALGORITHMS = tuple(name for _, name in ALGORITHM_SPECS)
 
 
-def _collection_root(dim, use_ma, standalone):
+def _collection_root(dim, standalone):
     """Return the run-data directory for one collection mode."""
     if standalone:
-        suffix = "ma_standalone" if use_ma else "standalone"
-        return Path("data") / f"dim_{dim}_{suffix}" / "run_data"
-    if use_ma:
-        return Path("data") / f"dim_{dim}_ma" / "run_data"
+        return Path("data") / f"dim_{dim}_standalone" / "run_data"
     return Path("data") / f"dim_{dim}" / "run_data"
 
 
@@ -572,7 +544,7 @@ def _write_performance_metrics(data_root, algname, run_tag, dim, output_suffix,
 
 
 def collect_data(a1_budget, dim, algs_to_run=None,
-                 fids=range(1, 25), output_suffix="", use_ma=False,
+                 fids=range(1, 25), output_suffix="",
                  standalone=False, iids=None, repetitions=20,
                  total_budget=1000):
     """
@@ -603,10 +575,6 @@ def collect_data(a1_budget, dim, algs_to_run=None,
         Suffix for output filenames, e.g. ".part-7".  Array tasks must use a
         distinct suffix and be merged after they all complete.
 
-    use_ma : bool, optional
-        If ``True``, evaluate the FID/IID pairs as ManyAffine functions.  The
-        default ``False`` uses the regular BBOB problems.
-
     standalone : bool, optional
         If ``True``, run every algorithm directly from its own native initial
         state.  No A1 CMA-ES run is performed and ``a1_budget`` is recorded as
@@ -629,9 +597,9 @@ def collect_data(a1_budget, dim, algs_to_run=None,
     ### === 
     trigger = ioh.logger.trigger.OnImprovement()
     algs_to_run = DEFAULT_ALGORITHMS if algs_to_run is None else algs_to_run
-    data_root = _collection_root(dim, use_ma, standalone)
+    data_root = _collection_root(dim, standalone)
     if iids is None:
-        iids = range(1, 8)
+        iids = range(6, 8) if standalone else range(1, 8)
 
     for algorithm_class, algname in ALGORITHM_SPECS:
         if algname not in algs_to_run:
@@ -688,9 +656,7 @@ def collect_data(a1_budget, dim, algs_to_run=None,
             fid_param_rows = []
             for iid in iids:
 
-                problem = IOHProblemWrapper(
-                    fid, iid, dim, ProblemClass.BBOB, multi_affine=use_ma
-                )
+                problem = IOHProblemWrapper(fid, iid, dim, ProblemClass.BBOB)
         
                 # Attach the logger to the problem
                 problem.attach_logger(logger)
@@ -799,23 +765,15 @@ if __name__ == "__main__":
         suffix = ""
 
     if len(sys.argv) > 6:
-        use_ma_arg = sys.argv[6].strip().lower()
-        if use_ma_arg not in {"true", "false"}:
-            raise ValueError("use_ma must be 'true' or 'false'")
-        use_ma = use_ma_arg == "true"
-    else:
-        use_ma = False
-
-    if len(sys.argv) > 7:
-        standalone_arg = sys.argv[7].strip().lower()
+        standalone_arg = sys.argv[6].strip().lower()
         if standalone_arg not in {"true", "false"}:
             raise ValueError("standalone must be 'true' or 'false'")
         standalone = standalone_arg == "true"
     else:
         standalone = False
 
-    if len(sys.argv) > 8:
-        instance_ids = [int(iid) for iid in sys.argv[8].split(",")]
+    if len(sys.argv) > 7:
+        instance_ids = [int(iid) for iid in sys.argv[7].split(",")]
     else:
         instance_ids = None
 
@@ -825,7 +783,6 @@ if __name__ == "__main__":
         algs_to_run=algorithms_to_run,
         fids=function_ids,
         output_suffix=suffix,
-        use_ma=use_ma,
         standalone=standalone,
         iids=instance_ids,
     )

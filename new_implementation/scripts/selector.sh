@@ -7,7 +7,6 @@ set -euo pipefail
 DIMENSIONS=(5 10 20 40)
 METRICS=(regret auc)
 FEATURE_STUDIES=(ela internal_state ela_internal_state)
-DATASET="default"
 
 
 mkdir -p "$WORKDIR/logs"
@@ -20,9 +19,9 @@ for DIMENSION in "${DIMENSIONS[@]}"; do
             TRAIN_JOB_ID=$(sbatch --parsable <<EOF
 #!/bin/bash
 #SBATCH -A p0027894
-#SBATCH --job-name=selector_train_D${DIMENSION}_${METRIC}_${FEATURE_STUDY}_${DATASET}
-#SBATCH --output=${WORKDIR}/logs/selector_train_D${DIMENSION}_${METRIC}_${FEATURE_STUDY}_${DATASET}.out
-#SBATCH --error=${WORKDIR}/logs/selector_train_D${DIMENSION}_${METRIC}_${FEATURE_STUDY}_${DATASET}.err
+#SBATCH --job-name=selector_train_D${DIMENSION}_${METRIC}_${FEATURE_STUDY}
+#SBATCH --output=${WORKDIR}/logs/selector_train_D${DIMENSION}_${METRIC}_${FEATURE_STUDY}.out
+#SBATCH --error=${WORKDIR}/logs/selector_train_D${DIMENSION}_${METRIC}_${FEATURE_STUDY}.err
 #SBATCH --time=12:00:00
 #SBATCH --mem=16G
 #SBATCH --partition=c25ms
@@ -33,7 +32,7 @@ module load GCCcore/12.2.0
 module load Python/3.10.8
 source "$ENV_PATH/bin/activate"
 
-PYTHONPATH="$WORKDIR/src" python "$WORKDIR/src/selector.py" --mode train --dimension "$DIMENSION" --metric "$METRIC" --dataset "$DATASET" --feature-study "$FEATURE_STUDY"
+PYTHONPATH="$WORKDIR/src" python "$WORKDIR/src/selector.py" --mode train --dimension "$DIMENSION" --metric "$METRIC" --feature-study "$FEATURE_STUDY"
 EOF
 )
 
@@ -41,9 +40,9 @@ EOF
                 sbatch --dependency="afterok:${TRAIN_JOB_ID}" <<EOF
 #!/bin/bash
 #SBATCH -A p0027894
-#SBATCH --job-name=selector_eval_D${DIMENSION}_${METRIC}_${FEATURE_STUDY}_${DATASET}_L${LOOKAHEAD_COUNT}
-#SBATCH --output=${WORKDIR}/logs/selector_eval_D${DIMENSION}_${METRIC}_${FEATURE_STUDY}_${DATASET}_L${LOOKAHEAD_COUNT}.out
-#SBATCH --error=${WORKDIR}/logs/selector_eval_D${DIMENSION}_${METRIC}_${FEATURE_STUDY}_${DATASET}_L${LOOKAHEAD_COUNT}.err
+#SBATCH --job-name=selector_eval_D${DIMENSION}_${METRIC}_${FEATURE_STUDY}_L${LOOKAHEAD_COUNT}
+#SBATCH --output=${WORKDIR}/logs/selector_eval_D${DIMENSION}_${METRIC}_${FEATURE_STUDY}_L${LOOKAHEAD_COUNT}.out
+#SBATCH --error=${WORKDIR}/logs/selector_eval_D${DIMENSION}_${METRIC}_${FEATURE_STUDY}_L${LOOKAHEAD_COUNT}.err
 #SBATCH --time=12:00:00
 #SBATCH --mem=16G
 #SBATCH --partition=c25ms
@@ -54,7 +53,7 @@ module load GCCcore/12.2.0
 module load Python/3.10.8
 source "$ENV_PATH/bin/activate"
 
-PYTHONPATH="$WORKDIR/src" python "$WORKDIR/src/selector.py" --mode evaluate --dimension "$DIMENSION" --metric "$METRIC" --dataset "$DATASET" --feature-study "$FEATURE_STUDY" --lookahead-count "$LOOKAHEAD_COUNT"
+PYTHONPATH="$WORKDIR/src" python "$WORKDIR/src/selector.py" --mode evaluate --dimension "$DIMENSION" --metric "$METRIC" --feature-study "$FEATURE_STUDY" --lookahead-count "$LOOKAHEAD_COUNT"
 EOF
             done
         done

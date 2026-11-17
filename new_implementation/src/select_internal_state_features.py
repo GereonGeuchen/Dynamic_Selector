@@ -54,6 +54,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--budget", type=int, required=True,
                         help="Include states through the first observation with evaluations >= this value.")
     parser.add_argument("--output-dir", type=Path, default=None)
+    parser.add_argument(
+        "--selected-features-file", type=Path,
+        help=("CSV produced by a normal-experiment run's selected_features directory. "
+              "When supplied, retain exactly these tsfresh columns instead of "
+              "fitting a new Random-Forest feature selector."),
+    )
     parser.add_argument("--threshold", type=float, default=2e-3,
                         help="Keep Random-Forest importances strictly above this value.")
     parser.add_argument("--n-jobs", type=int, default=-1)
@@ -131,23 +137,32 @@ def main() -> None:
     impute(features)
     metadata = metadata.loc[features.index]
 
-    selection_mask = metadata["iid"].isin(args.selection_iids)
-    if not selection_mask.any():
-        raise ValueError(
-            "None of the requested --selection-iids are present in the input: "
-            + ", ".join(map(str, args.selection_iids))
+    if args.selected_features_file:
+        selected_names = pd.read_csv(args.selected_features_file)["feature"]
+        missing_features = selected_names[~selected_names.isin(features.columns)]
+        if not missing_features.empty:
+            raise ValueError(
+                f"{args.selected_features_file} contains {len(missing_features)} features "
+                f"not produced by tsfresh; examples: {missing_features.iloc[:5].tolist()}"
+            )
+        importances = pd.Series(index=selected_names, dtype=float, name="importance")
+    else:
+        selection_mask = metadata["iid"].isin(args.selection_iids)
+        if not selection_mask.any():
+            raise ValueError(
+                "None of the requested --selection-iids are present in the input: "
+                + ", ".join(map(str, args.selection_iids))
+            )
+        classifier = RandomForestClassifier(
+            n_jobs=args.n_jobs,
+            class_weight="balanced",
+            max_depth=5,
+            random_state=args.random_state,
         )
-
-    classifier = RandomForestClassifier(
-        n_jobs=args.n_jobs,
-        class_weight="balanced",
-        max_depth=5,
-        random_state=args.random_state,
-    )
-    classifier.fit(features.loc[selection_mask], metadata.loc[selection_mask, "fid"])
-    importances = pd.Series(classifier.feature_importances_, index=features.columns, name="importance")
-    importances = importances.sort_values(ascending=False)
-    selected_names = importances.index[importances > args.threshold]
+        classifier.fit(features.loc[selection_mask], metadata.loc[selection_mask, "fid"])
+        importances = pd.Series(classifier.feature_importances_, index=features.columns, name="importance")
+        importances = importances.sort_values(ascending=False)
+        selected_names = importances.index[importances > args.threshold]
 
     importances_dir = output_dir / "feature_importances"
     selected_features_dir = output_dir / "selected_features"
@@ -155,10 +170,11 @@ def main() -> None:
     for directory in (importances_dir, selected_features_dir, feature_matrices_dir):
         directory.mkdir(parents=True, exist_ok=True)
 
-    importances.rename_axis("feature").reset_index().to_csv(
-        importances_dir / f"feature_importances{output_suffix}.csv", index=False
-    )
-    pd.DataFrame({"feature": selected_names, "importance": importances.loc[selected_names].to_numpy()}).to_csv(
+    if not args.selected_features_file:
+        importances.rename_axis("feature").reset_index().to_csv(
+            importances_dir / f"feature_importances{output_suffix}.csv", index=False
+        )
+    pd.DataFrame({"feature": selected_names, "importance": importances.reindex(selected_names).to_numpy()}).to_csv(
         selected_features_dir / f"selected_features{output_suffix}.csv", index=False
     )
     selected = features.loc[:, selected_names].copy()
@@ -170,8 +186,11 @@ def main() -> None:
     )
 
     print(f"Runs: {len(features)}; channels: {len(args.channels)}; tsfresh features: {features.shape[1]}")
-    print(f"Feature selection trained on IIDs: {sorted(metadata.loc[selection_mask, 'iid'].unique())}")
-    print(f"Selected {len(selected_names)} features with importance > {args.threshold:g}")
+    if args.selected_features_file:
+        print(f"Reused {len(selected_names)} features from {args.selected_features_file}")
+    else:
+        print(f"Feature selection trained on IIDs: {sorted(metadata.loc[selection_mask, 'iid'].unique())}")
+        print(f"Selected {len(selected_names)} features with importance > {args.threshold:g}")
     print(f"Wrote results to {output_dir}")
 
 
